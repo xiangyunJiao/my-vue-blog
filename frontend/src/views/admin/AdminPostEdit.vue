@@ -1,6 +1,13 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { marked } from 'marked'
+import Prism from 'prismjs'
+import 'prismjs/themes/prism-tomorrow.css'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-css'
+import 'prismjs/components/prism-bash'
 import { admin } from '../../api'
 import { ElMessage } from 'element-plus'
 
@@ -27,6 +34,24 @@ const saving = ref(false)
 const uploading = ref(false)
 const coverInputRef = ref(null)
 const bodyImageInputRef = ref(null)
+const bodyPreviewRef = ref(null)
+const bodyPreviewLayout = ref('split')
+
+const bodyHtml = computed(() => {
+  const md = form.value.body_md || ''
+  if (!md.trim()) return '<p class="preview-empty">暂无内容，左侧输入 Markdown 即可预览。</p>'
+  return marked.parse(md)
+})
+
+async function refreshBodyPreviewHighlight() {
+  await nextTick()
+  if (bodyPreviewRef.value) {
+    Prism.highlightAllUnder(bodyPreviewRef.value)
+  }
+}
+
+watch(() => form.value.body_md, refreshBodyPreviewHighlight)
+watch(bodyPreviewLayout, refreshBodyPreviewHighlight)
 
 async function loadOptions() {
   try {
@@ -166,11 +191,43 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="正文" required>
           <div class="body-editor">
-            <el-input v-model="form.body_md" type="textarea" :rows="16" placeholder="支持 Markdown" />
-            <el-button size="small" :loading="uploading" @click="bodyImageInputRef?.value?.click()" class="insert-img-btn">
-              插入图片
-            </el-button>
+            <div class="body-toolbar">
+              <el-radio-group v-model="bodyPreviewLayout" size="small">
+                <el-radio-button value="split">分栏</el-radio-button>
+                <el-radio-button value="edit">仅编辑</el-radio-button>
+                <el-radio-button value="preview">仅预览</el-radio-button>
+              </el-radio-group>
+              <el-button size="small" :loading="uploading" @click="bodyImageInputRef?.value?.click()">
+                插入图片
+              </el-button>
+            </div>
             <input ref="bodyImageInputRef" type="file" accept="image/*" style="display:none" @change="handleBodyImageUpload" />
+            <div
+              class="body-panes"
+              :class="{
+                'layout-split': bodyPreviewLayout === 'split',
+                'layout-edit': bodyPreviewLayout === 'edit',
+                'layout-preview': bodyPreviewLayout === 'preview',
+              }"
+            >
+              <div v-show="bodyPreviewLayout !== 'preview'" class="body-pane body-pane-source">
+                <el-input
+                  v-model="form.body_md"
+                  type="textarea"
+                  :autosize="false"
+                  placeholder="支持 Markdown"
+                  class="body-textarea"
+                />
+              </div>
+              <div v-show="bodyPreviewLayout !== 'edit'" class="body-pane body-pane-preview">
+                <div class="preview-label">预览</div>
+                <div
+                  ref="bodyPreviewRef"
+                  class="body-preview-content markdown-body"
+                  v-html="bodyHtml"
+                />
+              </div>
+            </div>
           </div>
         </el-form-item>
         <el-form-item label="封面图">
@@ -239,9 +296,128 @@ onMounted(() => {
 
 .body-editor {
   position: relative;
+  width: 100%;
 }
 
-.insert-img-btn {
-  margin-top: 8px;
+.body-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.body-panes {
+  width: 100%;
+}
+
+.body-panes.layout-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+@media (max-width: 960px) {
+  .body-panes.layout-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.body-pane-source {
+  min-width: 0;
+}
+
+.body-textarea :deep(.el-textarea__inner) {
+  min-height: 420px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.body-pane-preview {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 6px;
+  text-align: left;
+}
+
+.body-preview-content {
+  flex: 1;
+  min-height: 420px;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  text-align: left;
+  line-height: 1.7;
+  box-sizing: border-box;
+}
+
+.body-preview-content :deep(.preview-empty) {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+.body-preview-content :deep(h2) {
+  font-size: 20px;
+  margin: 20px 0 10px;
+  color: var(--text-h, var(--el-text-color-primary));
+}
+
+.body-preview-content :deep(h3) {
+  font-size: 17px;
+  margin: 16px 0 8px;
+  color: var(--text-h, var(--el-text-color-primary));
+}
+
+.body-preview-content :deep(p) {
+  margin: 0 0 12px;
+}
+
+.body-preview-content :deep(pre) {
+  background: var(--code-bg, var(--el-fill-color-light));
+  padding: 12px 14px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.body-preview-content :deep(code) {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+
+.body-preview-content :deep(pre code) {
+  padding: 0;
+  background: none;
+}
+
+.body-preview-content :deep(ul),
+.body-preview-content :deep(ol) {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.body-preview-content :deep(blockquote) {
+  margin: 12px 0;
+  padding-left: 14px;
+  border-left: 4px solid var(--accent, var(--el-color-primary));
+  color: var(--el-text-color-regular);
+}
+
+.body-preview-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
 }
 </style>
