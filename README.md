@@ -9,11 +9,12 @@
 
 ## 快速开始
 
+**前置**：在项目根目录执行 `nvm use`（或 `nvm use 18`），确保 Node ≥ 18。前后端均需此版本。
+
 ### 1. 后端
 
 ```bash
 cd backend
-nvm use          # 或 nvm use 18，确保 Node ≥ 18
 cp .env.example .env
 # 编辑 .env，至少设置 ADMIN_PASSWORD（至少 8 位，首次空库会创建管理员）
 npm install
@@ -30,7 +31,18 @@ npm install
 npm run dev
 ```
 
-前端默认运行在 `http://localhost:5173`。
+前端默认运行在 `http://localhost:5173`。开发时 Vite 会将 `/api` 代理到后端，无需额外配置。
+
+**注意**：需同时启动后端，否则文章列表会加载失败。
+
+## 管理后台
+
+前端提供可视化管理界面：
+
+- 访问 `http://localhost:5173/admin` 进入管理后台
+- 未登录会跳转到 `/admin/login`
+- 默认账号：`admin@localhost` / `admin123456`（与 `.env` 中 `ADMIN_EMAIL`、`ADMIN_PASSWORD` 一致）
+- 支持：仪表盘、文章列表、新建/编辑文章、退出登录
 
 ## API 概览
 

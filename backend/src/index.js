@@ -14,6 +14,7 @@ const healthRouter = require('./routes/health');
 const authRouter = require('./routes/auth');
 const publicApiRouter = require('./routes/publicApi');
 const adminRouter = require('./routes/admin');
+const uploadRouter = require('./routes/upload');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -59,10 +60,12 @@ app.use(
   })
 );
 
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api', publicApiRouter);
 app.use('/api/admin', requireAuth, adminRouter);
+app.use('/api/admin/upload', requireAuth, uploadRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });

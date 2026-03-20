@@ -2,11 +2,11 @@
 name: personal-blog-zero-to-deploy
 description: >-
   Builds a personal blog from scratch to automated deployment: Node/Express API,
-  SQLite or MySQL, Vue or static frontend, admin auth, posts/tags/categories,
-  RSS/sitemap, optional comments and CI/CD. Use when the user wants to create or
-  extend a personal blog, full-stack blog tutorial, zero-to-production blog, or
-  phased deployment with GitHub Actions; or mentions blog CRUD, markdown backend,
-  or VPS deploy for my-vue-blog.
+  SQLite or MySQL, Vue frontend with rich pages (categories, tags, archive,
+  about, sidebar, footer, dark mode, TOC, code highlight, cover images, links).
+  Includes admin auth, RSS/sitemap, search, site settings, image upload, CI/CD.
+  Use when creating or extending a personal blog, or when the user wants richer
+  blog pages, sidebar, archive, about page, or VPS deploy for my-vue-blog.
 ---
 
 # 个人博客：从零到自动化部署（分阶段 Skill）
@@ -36,11 +36,12 @@ description: >-
 [ ] 阶段 3 — 文章 / 分类 / 标签（核心 CRUD + 公开读）
 [ ] 阶段 4 — 管理端认证与受保护路由
 [ ] 阶段 5 — Markdown、摘要、slug 唯一性
-[ ] 阶段 6 — 前端对接（列表、详情、管理可选页）
-[ ] 阶段 7 — RSS、站点地图、可选搜索
-[ ] 阶段 8 — 图片上传与静态资源（可选）
-[ ] 阶段 9 — 测试与生产配置（env、CORS、信任代理）
-[ ] 阶段 10 — 自动化部署（GitHub Actions + VPS 或 Docker）
+[ ] 阶段 6 — 前端对接（列表、详情、分类/标签页、归档、关于）
+[ ] 阶段 6b — 页面丰富化（侧边栏、页脚、封面图、目录、深色模式、代码高亮）
+[ ] 阶段 7 — RSS、站点地图、搜索
+[ ] 阶段 8 — 图片上传、站点配置、友情链接
+[ ] 阶段 9 — 测试与生产配置
+[ ] 阶段 10 — 自动化部署
 ```
 
 ---
@@ -142,15 +143,31 @@ description: >-
 
 ## 阶段 6：前端对接
 
-**目标**：读者端能浏览；管理端可后续再做。
+**目标**：读者端能浏览；页面结构完整。
 
 **步骤**
 
-1. 前端配置 `VITE_API_BASE`（或等价）指向后端。
-2. 文章列表页、详情页调用公开 API；错误与加载状态处理。
-3. （可选）简单管理登录 + 文章编辑页，或说明用 Postman/Thunder Client 直到管理 UI 完成。
+1. 前端配置 `VITE_API_BASE` 或 Vite 代理 `/api` 指向后端。
+2. **基础页面**：首页（文章列表）、文章详情、分类页 `/category/:slug`、标签页 `/tag/:slug`、归档页 `/archive`、关于页 `/about`。
+3. **API 扩展**：`GET /api/posts?category=slug`、`GET /api/posts?tag=slug`、`GET /api/posts/archive`（按年月分组）。
+4. 错误与加载状态处理。
 
-**验收**：本地前后端联调可读完文章。
+**验收**：本地前后端联调可读完文章；分类/标签/归档可正确筛选。
+
+---
+
+## 阶段 6b：页面丰富化
+
+**目标**：布局完整、视觉丰富、阅读体验好。
+
+**步骤**
+
+1. **布局**：顶部导航（Logo、首页、分类、归档、关于）、侧边栏（最新文章、分类列表、标签云、RSS 链接）、页脚（版权、友情链接）。
+2. **文章**：封面图 `cover_image`、置顶 `is_pinned`、阅读量 `view_count`；详情页上一篇/下一篇导航。
+3. **体验**：代码高亮（Prism.js）、文章目录 TOC、深色模式切换（跟随系统或手动，存 localStorage）。
+4. **数据**：迁移增加 `cover_image`、`view_count`、`is_pinned`；`GET /api/posts/:slug` 时 `view_count` 自增。
+
+**验收**：页面有导航与侧边栏；文章有封面与目录；支持深色模式。
 
 ---
 
@@ -166,14 +183,15 @@ description: >-
 
 ---
 
-## 阶段 8：图片上传（可选）
+## 阶段 8：图片上传、站点配置、友情链接
 
 **步骤**
 
-1. `POST /api/upload`（受保护）：`multer`，限制扩展名与大小；返回公开 URL 路径。
-2. 静态挂载 `uploads/`；生产建议 CDN 或对象存储（文档中说明迁移路径）。
+1. **图片上传**：`POST /api/upload`（受保护），`multer` 限制扩展名与大小；返回 URL；静态挂载 `uploads/`。
+2. **站点配置**：`site_settings` 表（key/value）或 JSON 文件；`GET /api/site` 返回标题、描述、关于页内容；管理端可修改。
+3. **友情链接**：`links` 表；`GET /api/links` 公开；管理端 CRUD。
 
-**验收**：上传后文章可引用图片 URL。
+**验收**：上传后文章可引用图片；页脚展示友链；关于页内容可配置。
 
 ---
 
