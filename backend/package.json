@@ -1,15 +1,31 @@
 {
   "name": "backend",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "个人博客 API（Express + SQLite）",
+  "main": "src/index.js",
   "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^5.2.1"
+    "bcrypt": "^5.1.1",
+    "sql.js": "^1.12.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "express-session": "^1.18.1",
+    "marked": "^15.0.7",
+    "morgan": "^1.10.0",
+    "sanitize-html": "^2.14.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   }
 }
