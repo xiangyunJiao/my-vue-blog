@@ -1,0 +1,47 @@
+---
+description: my-vue-blog 前后端 JSON 接口规范（包络格式、管理端固定路径与 POST body）
+globs: backend/src/routes/**/*.ts,backend/src/createApp.ts,backend/src/lib/httpJson.ts,backend/src/types/apiEnvelope.ts,frontend/src/api/**/*.ts,frontend/src/types/api.ts
+alwaysApply: false
+---
+
+# 博客项目 API 约定
+
+## 统一响应包络（JSON）
+
+所有返回 JSON 的接口（RSS/XML 除外）必须使用：
+
+```json
+{ "ec": <number>, "em": "<string>", "body": <object|array> }
+```
+
+- **ec**：与 HTTP 状态码一致（如 200、201、400、404、500）。
+- **em**：人类可读提示；成功可用 `"ok"` 或简短说明。
+- **body**：业务数据；无载荷时用 `{}`。
+
+后端：成功用 `resSuccess(res, body, em?, httpStatus?)`，错误用 `resError(res, status, message)`（`errorHandler` 已统一）。
+
+前端：路径常量集中在 **`frontend/src/api/paths.ts`**（与后端挂载一致）；`frontend/src/api/index.ts` 中 Axios 拦截器对包络做校验；`ec >= 400` 时按错误处理；成功时将 **`response.data` 解包为 `body`**。
+
+类型：前后端可共用概念 **`ApiEnvelope<T>`**（见 `backend/src/types/apiEnvelope.ts`、`frontend/src/types/api.ts`）。
+
+## 管理端 `/api/admin`（固定路径 + POST）
+
+- **禁止**在路径中写动态资源 id（如 `/categories/9/delete`）。
+- 使用 **固定路径**，**POST**，参数一律放在 **JSON 请求体**（`Content-Type: application/json`）。
+- 典型命名：`.../list`、`.../detail`、`.../create`、`.../update`、`.../delete`、`.../get`、`.../edit` 等。
+
+示例：
+
+- 分类删除：`POST /api/admin/categories/delete`，body：`{ "id": 9 }`
+- 文章详情：`POST /api/admin/posts/detail`，body：`{ "id": 1 }`
+- 文章列表：`POST /api/admin/posts/list`，body：`{ "page": 1, "limit": 20, "status": "draft" }`（字段按需）
+
+新增或修改接口时：**后端**在对应 `routes/*.ts` 中注册，并核对 **`backend/src/routes/registerRoutes.ts`** 挂载顺序；**前端**在 **`frontend/src/api/paths.ts`** 增加/修改路径，再在 `index.ts` 中调用。
+
+## 读者端公开 API
+
+可使用 GET + query；响应同样包 `{ ec, em, body }`。不要在未讨论的情况下把公开读接口改成 POST，以免破坏缓存与 SEO。
+
+## 错误与前端展示
+
+HTTP 4xx/5xx 时 body 多为 `{}`，文案以 **em** 为准；前端 `formatApiError` 已优先读取 `em`。

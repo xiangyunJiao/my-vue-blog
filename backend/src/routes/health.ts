@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import { registerJsonRoute } from '../lib/apiRoute';
 
 const router = Router();
 
-router.get('/health', (_req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() });
-});
+registerJsonRoute(router, 'get', '/health', async () => ({
+  ok: true,
+  time: new Date().toISOString(),
+}));
 
 export default router;

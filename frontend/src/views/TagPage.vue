@@ -25,9 +25,9 @@ async function fetch() {
       posts.list({ page: page.value, limit, tag: slug.value }),
       tags.list(),
     ])
-    list.value = postsRes.data.data
-    total.value = postsRes.data.total
-    const t = (tagRes.data.data || []).find((x) => x.slug === slug.value)
+    list.value = postsRes.data
+    total.value = postsRes.total
+    const t = (tagRes.data || []).find((x) => x.slug === slug.value)
     tagName.value = t?.name || slug.value
   } catch (e) {
     error.value = formatApiError(e, '加载失败')

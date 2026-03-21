@@ -30,6 +30,12 @@ npm start       # node dist/index.js
 
 `npm run typecheck` 可单独做类型检查（不产出文件）。
 
+**接口集成测试**（独立临时 SQLite、覆盖主要路由）：
+
+```bash
+cd backend && npm test
+```
+
 API 默认运行在 `http://localhost:3000`。
 
 ### 2. 前端
@@ -40,11 +46,7 @@ npm install
 npm run dev
 ```
 
-入口与路由、API 封装等为 **TypeScript**（`main.ts`、`router/index.ts` 等）。`npm run build` 会先执行 `vue-tsc` 再 `vite build`；`npm run typecheck` 仅类型检查。
 
-前端默认运行在 `http://localhost:5173`。开发时 Vite 会将 `/api`、`/uploads` 代理到后端，无需额外配置。
-
-**注意**：需同时启动后端，否则文章列表会加载失败。
 
 ## 管理后台
 
@@ -57,45 +59,74 @@ npm run dev
 
 ## API 概览
 
+### 响应格式
+
+JSON 接口（不含 RSS / 站点地图等 XML）统一为：
+
+```json
+{ "ec": 200, "em": "ok", "body": { } }
+```
+
+- `ec`：业务状态码，与 HTTP 状态码一致（成功多为 200 / 201）。
+- `em`：提示文案。
+- `body`：实际数据载荷。
+
+错误时同样为上述结构，`ec`≥400；前端 Axios 会解包成功响应的 `body` 到 `response.data`，便于页面沿用原有字段访问方式。
+
+### 管理端路径约定
+
+`/api/admin` 下采用**固定路径 + POST + JSON 请求体**传参（不在路径中写动态 id），例如：
+
+- 分类删除：`POST /api/admin/categories/delete`，body：`{ "id": 9 }`
+- 文章详情：`POST /api/admin/posts/detail`，body：`{ "id": 1 }`
+
 ### 公开（读者端）
 
-| 接口 | 说明 |
-|------|------|
-| `GET /api/health` | 健康检查 |
-| `GET /api/posts` | 文章列表（`?page=&limit=`，支持 `?category=&tag=`） |
-| `GET /api/posts/:slug` | 文章详情（响应含 `likeCount`、`liked`、`commentCount`；可选请求头 `X-Blog-Visitor-Id` 用于识别是否已赞） |
-| `GET /api/posts/:slug/comments` | 已通过审核的留言列表 |
-| `POST /api/posts/:slug/comments` | 提交留言（默认待审核，有频率限制） |
-| `POST /api/posts/:slug/like` | 点赞/取消赞（需请求头 `X-Blog-Visitor-Id`：UUID v4，与前端 localStorage 一致） |
-| `GET /api/archive` | 归档（按年月分组） |
-| `GET /api/search` | 搜索（`?q=`，分页同 posts） |
-| `GET /api/categories` | 分类列表 |
-| `GET /api/tags` | 标签列表 |
-| `GET /api/site` | 站点配置（标题、关于等） |
-| `GET /api/links` | 友情链接 |
-| `GET /api/rss`（另有 `/api/rss.xml`、`/api/feed`、`/api/feed.xml`） | RSS（最近 20 篇） |
-| `GET /api/sitemap`（另有 `/api/sitemap.xml`） | 站点地图 |
+
+| 接口                                                            | 说明                                                                              |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `GET /api/health`                                             | 健康检查                                                                            |
+| `GET /api/posts`                                              | 文章列表（`?page=&limit=`，支持 `?category=&tag=`）                                      |
+| `GET /api/posts/:slug`                                        | 文章详情（响应含 `likeCount`、`liked`、`commentCount`；可选请求头 `X-Blog-Visitor-Id` 用于识别是否已赞） |
+| `GET /api/posts/:slug/comments`                               | 已通过审核的留言列表                                                                      |
+| `POST /api/posts/:slug/comments`                              | 提交留言（默认待审核，有频率限制）                                                               |
+| `POST /api/posts/:slug/like`                                  | 点赞/取消赞（需请求头 `X-Blog-Visitor-Id`：UUID v4，与前端 localStorage 一致）                    |
+| `GET /api/archive`                                            | 归档（按年月分组）                                                                       |
+| `GET /api/search`                                             | 搜索（`?q=`，分页同 posts）                                                             |
+| `GET /api/categories`                                         | 分类列表                                                                            |
+| `GET /api/tags`                                               | 标签列表                                                                            |
+| `GET /api/site`                                               | 站点配置（标题、关于等）                                                                    |
+| `GET /api/links`                                              | 友情链接                                                                            |
+| `GET /api/visit`                                              | 仅说明：接口存在；**浏览器地址栏打开为 GET**，不会写入统计                                               |
+| `POST /api/visit`                                             | 全站访问计数（需请求头 `X-Blog-Visitor-Id`：UUID v4；每访客每 UTC 日最多计 1 次）                      |
+| `GET /api/rss`（另有 `/api/rss.xml`、`/api/feed`、`/api/feed.xml`） | RSS（最近 20 篇）                                                                    |
+| `GET /api/sitemap`（另有 `/api/sitemap.xml`）                     | 站点地图                                                                            |
+
 
 ### 认证
 
-| 接口 | 说明 |
-|------|------|
-| `POST /api/auth/login` | 登录（有频率限制，防暴力破解） |
-| `POST /api/auth/logout` | 退出 |
-| `GET /api/auth/me` | 当前用户 |
+
+| 接口                      | 说明              |
+| ----------------------- | --------------- |
+| `POST /api/auth/login`  | 登录（有频率限制，防暴力破解） |
+| `POST /api/auth/logout` | 退出              |
+| `GET /api/auth/me`      | 当前用户            |
+
 
 ### 管理端（需登录 Session）
 
 前缀：`/api/admin`（Cookie 需携带凭证，与前端同域或已配置 CORS）
 
-| 接口 | 说明 |
-|------|------|
-| `GET/POST/PUT/DELETE .../posts` | 文章 CRUD |
-| `POST/PUT/DELETE .../categories`、`.../tags` | 分类、标签 |
-| `GET/PUT .../site` | 站点设置 |
-| `GET/POST/PUT/DELETE .../links` | 友链 |
-| `POST .../upload` | 图片上传 |
+
+| 接口                                                                  | 说明         |
+| ------------------------------------------------------------------- | ---------- |
+| `GET/POST/PUT/DELETE .../posts`                                     | 文章 CRUD    |
+| `POST/PUT/DELETE .../categories`、`.../tags`                         | 分类、标签      |
+| `GET/PUT .../site`                                                  | 站点设置       |
+| `GET/POST/PUT/DELETE .../links`                                     | 友链         |
+| `POST .../upload`                                                   | 图片上传       |
 | `GET .../comments`、`PUT .../comments/:id`、`DELETE .../comments/:id` | 留言列表与审核、删除 |
+
 
 ## 默认管理员
 
@@ -109,11 +140,11 @@ npm run dev
 
 部署前建议逐项确认：
 
-- [ ] **环境变量**：`NODE_ENV=production`、`SESSION_SECRET`（至少 16 字符）、`ADMIN_*` 已改为强密码；`PUBLIC_SITE_URL` 为线上站点根 URL（RSS / 站点地图链接正确）；`FRONTEND_ORIGIN` 为实际前端来源（CORS）。
-- [ ] **HTTPS**：生产环境开启 HTTPS，以便 `cookie.secure` 与 Session 正常工作。
-- [ ] **反向代理**：若经 Nginx/Caddy 反代，后端已 `trust proxy`（代码中已设置），并正确传递 `X-Forwarded-*`。
-- [ ] **静态与上传**：`/uploads` 由后端或 CDN 提供；前端构建产物由 Nginx 等托管，`/api` 反代到 Node。
-- [ ] **数据库**：定期备份 `blog.sqlite`；大流量时可评估迁移 MySQL 等。
-- [ ] **回滚**：保留上一版本构建产物或镜像；出问题时可回退 Git 并重新部署。
+- **环境变量**：`NODE_ENV=production`、`SESSION_SECRET`（至少 16 字符）、`ADMIN_`* 已改为强密码；`PUBLIC_SITE_URL` 为线上站点根 URL（RSS / 站点地图链接正确）；`FRONTEND_ORIGIN` 为实际前端来源（CORS）。
+- **HTTPS**：生产环境开启 HTTPS，以便 `cookie.secure` 与 Session 正常工作。
+- **反向代理**：若经 Nginx/Caddy 反代，后端已 `trust proxy`（代码中已设置），并正确传递 `X-Forwarded-`*。
+- **静态与上传**：`/uploads` 由后端或 CDN 提供；前端构建产物由 Nginx 等托管，`/api` 反代到 Node。
+- **数据库**：定期备份 `blog.sqlite`；大流量时可评估迁移 MySQL 等。
+- **回滚**：保留上一版本构建产物或镜像；出问题时可回退 Git 并重新部署。
 
 自动化部署（如 GitHub Actions + SSH）可在上述稳定后再接 CI/CD。

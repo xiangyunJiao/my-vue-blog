@@ -1,17 +1,23 @@
+/**
+ * 管理端业务路由（相对路径均不带 /api/admin 前缀）。
+ * 实际 URL = `registerRoutes` 中的挂载前缀 `/api/admin` + 此处路径，例如 POST `/categories/list` → `POST /api/admin/categories/list`。
+ * 鉴权在 `registerRoutes.ts` 通过 `requireAuth` 挂在 `/api/admin` 上，不在本文件重复。
+ */
 import { Router } from 'express';
-import type { Request } from 'express';
 import { getDb } from '../db';
 import type { SqlRow, WrappedDatabase, RunResult } from '../db/types';
-import { asyncHandler } from '../middleware/asyncHandler';
 import { HttpError } from '../lib/errors';
 import { slugify } from '../lib/slug';
 import { markdownToSafeHtml } from '../lib/markdown';
+import { adminRouterGetFallback } from '../lib/getMethodHint';
+import { readVisitStats } from '../lib/visitStats';
+import { payload, registerJsonRoute } from '../lib/apiRoute';
 
 const router = Router();
 
-function parsePageLimit(query: Record<string, unknown>) {
-  const page = Math.max(1, parseInt(String(query.page || '1'), 10) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(String(query.limit || '20'), 10) || 20));
+function parsePageLimit(input: Record<string, unknown>) {
+  const page = Math.max(1, parseInt(String(input.page ?? '1'), 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(input.limit ?? '20'), 10) || 20));
   return { page, limit, offset: (page - 1) * limit };
 }
 
@@ -21,18 +27,15 @@ function parseIdParam(raw: unknown): number | null {
   return id;
 }
 
-function parseQueryId(query: Request['query']): number | null {
-  if (query == null || query.id == null) return null;
-  const v = Array.isArray(query.id) ? query.id[0] : query.id;
-  return parseIdParam(v);
+/** 从 body 取 id */
+function parseBodyId(body: unknown): number | null {
+  if (body == null || typeof body !== 'object') return null;
+  const o = body as Record<string, unknown>;
+  const raw = o.id;
+  if (typeof raw === 'bigint') return parseIdParam(Number(raw));
+  return parseIdParam(raw);
 }
 
-/** 分类 id：body → query → 路径参数 */
-function resolveCategoryId(req: Request): number | null {
-  return parseBodyId(req.body) ?? parseQueryId(req.query) ?? parseIdParam(req.params?.id);
-}
-
-/** 前端可能传 boolean / 字符串，避免 "false" 被当成 truthy */
 function parsePinned01(body: Record<string, unknown>): 0 | 1 {
   const v = body && Object.prototype.hasOwnProperty.call(body, 'is_pinned') ? body.is_pinned : undefined;
   if (v === true || v === 1 || v === '1') return 1;
@@ -57,15 +60,6 @@ function resolveNewPostId(db: WrappedDatabase, info: RunResult, slug: string): n
   return 0;
 }
 
-/** 从 body 取 id（兼容 number / string / bigint 序列化后的情况） */
-function parseBodyId(body: unknown): number | null {
-  if (body == null || typeof body !== 'object') return null;
-  const o = body as Record<string, unknown>;
-  const raw = o.id;
-  if (typeof raw === 'bigint') return parseIdParam(Number(raw));
-  return parseIdParam(raw);
-}
-
 function replacePostTags(tx: WrappedDatabase, postId: number, tagIds: unknown) {
   tx.prepare('DELETE FROM post_tags WHERE post_id = ?').run(postId);
   const insert = tx.prepare('INSERT INTO post_tags (post_id, tag_id) VALUES (?, ?)');
@@ -77,13 +71,12 @@ function replacePostTags(tx: WrappedDatabase, postId: number, tagIds: unknown) {
   }
 }
 
-// --- Posts ---
+// --- Posts（固定路径 + POST + body）---
 
-router.get(
-  '/posts',
-  asyncHandler(async (req, res) => {
-    const { page, limit, offset } = parsePageLimit(req.query as Record<string, unknown>);
-    const status = req.query.status;
+registerJsonRoute(router, 'post', '/posts/list', async (ctx) => {
+    const q = (ctx.body || {}) as Record<string, unknown>;
+    const { page, limit, offset } = parsePageLimit(q);
+    const status = q.status;
     const db = await getDb();
 
     let where = '1=1';
@@ -108,37 +101,34 @@ router.get(
       )
       .all(...params, limit, offset);
 
-    res.json({
-      data: rows.map((r) => {
-        const row = r as SqlRow;
-        return {
-          id: row.id,
-          title: row.title,
-          slug: row.slug,
-          excerpt: row.excerpt,
-          coverImage: row.cover_image,
-          viewCount: row.view_count ?? 0,
-          isPinned: !!row.is_pinned,
-          status: row.status,
-          publishedAt: row.published_at,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          category: row.category_id
-            ? { id: row.category_id, name: row.category_name, slug: row.category_slug }
-            : null,
-        };
-      }),
-      page,
-      limit,
-      total,
-    });
-  })
-);
+    return payload({
+        data: rows.map((r) => {
+          const row = r as SqlRow;
+          return {
+            id: row.id,
+            title: row.title,
+            slug: row.slug,
+            excerpt: row.excerpt,
+            coverImage: row.cover_image,
+            viewCount: row.view_count ?? 0,
+            isPinned: !!row.is_pinned,
+            status: row.status,
+            publishedAt: row.published_at,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            category: row.category_id
+              ? { id: row.category_id, name: row.category_name, slug: row.category_slug }
+              : null,
+          };
+        }),
+        page,
+        limit,
+        total,
+      }, 'ok');
+});
 
-router.get(
-  '/posts/:id',
-  asyncHandler(async (req, res) => {
-    const id = parseInt(String(req.params.id), 10);
+registerJsonRoute(router, 'post', '/posts/detail', async (ctx) => {
+    const id = parseBodyId(ctx.body);
     if (!id) throw new HttpError(400, '无效的文章 id');
 
     const db = await getDb();
@@ -162,7 +152,7 @@ router.get(
       )
       .all(id);
 
-    res.json({
+    return {
       id: row.id,
       title: row.title,
       slug: row.slug,
@@ -181,14 +171,11 @@ router.get(
         const tr = t as SqlRow;
         return { id: tr.id, name: tr.name, slug: tr.slug };
       }),
-    });
-  })
-);
+    };
+});
 
-router.post(
-  '/posts',
-  asyncHandler(async (req, res) => {
-    const body = req.body as Record<string, unknown>;
+registerJsonRoute(router, 'post', '/posts/create', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
     const title = typeof body.title === 'string' ? body.title.trim() : '';
     if (!title) throw new HttpError(400, 'title 必填');
 
@@ -241,7 +228,6 @@ router.post(
           category_id: categoryId,
           published_at: publishedAt,
         });
-      /** sql.js 在事务内有时 changes 为 0 但行已插入，不以 changes 为准 */
       const postId = resolveNewPostId(db, info, slug);
       if (!postId) {
         throw new HttpError(
@@ -254,21 +240,18 @@ router.post(
     });
 
     const postId = tx();
-    res.status(201).json({ id: postId, slug });
-  })
-);
+    return payload({ id: postId, slug }, '创建成功', 201);
+});
 
-router.put(
-  '/posts/:id',
-  asyncHandler(async (req, res) => {
-    const id = parseInt(String(req.params.id), 10);
+registerJsonRoute(router, 'post', '/posts/update', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
+    const id = parseBodyId(body);
     if (!id) throw new HttpError(400, '无效的文章 id');
 
     const db = await getDb();
     const existing = db.prepare('SELECT * FROM posts WHERE id = ?').get(id) as SqlRow | null;
     if (!existing) throw new HttpError(404, '文章不存在');
 
-    const body = req.body as Record<string, unknown>;
     const title = typeof body.title === 'string' ? body.title.trim() : String(existing.title);
     if (!title) throw new HttpError(400, 'title 不能为空');
 
@@ -352,29 +335,36 @@ router.put(
     });
 
     tx();
-    res.json({ id, slug });
-  })
-);
-
-/** 删除文章：路径 id；另提供 POST + body/query id，避免代理对 DELETE 处理异常 */
-const postDelete = asyncHandler(async (req, res) => {
-  const id = parseBodyId(req.body) ?? parseIdParam(req.query.id) ?? parseIdParam(req.params.id);
-  if (id == null) throw new HttpError(400, '无效的文章 id');
-  const db = await getDb();
-  const info = db.prepare('DELETE FROM posts WHERE id = ?').run(id);
-  if (info.changes === 0) throw new HttpError(404, '文章不存在');
-  res.json({ ok: true });
+    return payload({ id, slug }, '更新成功');
 });
 
-router.post('/posts/delete', postDelete);
-router.delete('/posts/:id', postDelete);
+registerJsonRoute(router, 'post', '/posts/delete', async (ctx) => {
+    const id = parseBodyId(ctx.body);
+    if (id == null) throw new HttpError(400, '无效的文章 id');
+    const db = await getDb();
+    const info = db.prepare('DELETE FROM posts WHERE id = ?').run(id);
+    if (info.changes === 0) throw new HttpError(404, '文章不存在');
+    return payload({ ok: true }, '删除成功');
+});
+
+// --- Categories / Tags 列表（管理端统一 POST）---
+
+registerJsonRoute(router, 'post', '/categories/list', async () => {
+    const db = await getDb();
+    const rows = db.prepare('SELECT id, name, slug, created_at FROM categories ORDER BY name').all();
+    return { data: rows };
+});
+
+registerJsonRoute(router, 'post', '/tags/list', async () => {
+    const db = await getDb();
+    const rows = db.prepare('SELECT id, name, slug, created_at FROM tags ORDER BY name').all();
+    return { data: rows };
+});
 
 // --- Categories ---
 
-router.post(
-  '/categories',
-  asyncHandler(async (req, res) => {
-    const body = req.body as Record<string, unknown>;
+registerJsonRoute(router, 'post', '/categories/create', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) throw new HttpError(400, 'name 必填');
     const slug =
@@ -388,60 +378,46 @@ router.post(
     if (dup) throw new HttpError(409, '分类 slug 已存在');
 
     const info = db.prepare('INSERT INTO categories (name, slug) VALUES (?, ?)').run(name, slug);
-    res.status(201).json({ id: info.lastInsertRowid, name, slug });
-  })
-);
-
-const categoryEdit = asyncHandler(async (req, res) => {
-  /** id 优先路径 /categories/:id/edit，避免代理丢 body/query */
-  const id = resolveCategoryId(req);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const body = req.body as Record<string, unknown>;
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  if (!name) throw new HttpError(400, 'name 必填');
-  let slug =
-    typeof body.slug === 'string' && body.slug.trim()
-      ? slugify(body.slug)
-      : slugify(name);
-  if (!slug) throw new HttpError(400, '无效 slug');
-
-  const db = await getDb();
-  const existRows = db.prepare('SELECT id FROM categories WHERE id = ?').all(id);
-  if (!existRows.length) throw new HttpError(404, '分类不存在');
-
-  const dup = db.prepare('SELECT id FROM categories WHERE slug = ? AND id != ?').get(slug, id);
-  if (dup) throw new HttpError(409, '分类 slug 已存在');
-
-  db.prepare('UPDATE categories SET name = ?, slug = ? WHERE id = ?').run(name, slug, id);
-  // SQLite 在值未变化时 changes 可能为 0，不能据此判「不存在」
-  res.json({ id, name, slug });
+    return payload({ id: info.lastInsertRowid, name, slug }, '创建成功', 201);
 });
 
-router.post('/categories/edit', categoryEdit);
-router.post('/categories/:id/edit', categoryEdit);
+registerJsonRoute(router, 'post', '/categories/edit', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
+    const id = parseBodyId(body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) throw new HttpError(400, 'name 必填');
+    let slug =
+      typeof body.slug === 'string' && body.slug.trim()
+        ? slugify(body.slug)
+        : slugify(name);
+    if (!slug) throw new HttpError(400, '无效 slug');
 
-/** 删除分类：支持 POST/DELETE + 路径 /categories/:id/delete */
-const categoryDelete = asyncHandler(async (req, res) => {
-  const id = resolveCategoryId(req);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const db = await getDb();
-  const rows = db.prepare('SELECT id FROM categories WHERE id = ?').all(id);
-  if (!rows.length) throw new HttpError(404, '分类不存在');
-  db.prepare('DELETE FROM categories WHERE id = ?').run(id);
-  res.json({ ok: true });
+    const db = await getDb();
+    const existRows = db.prepare('SELECT id FROM categories WHERE id = ?').all(id);
+    if (!existRows.length) throw new HttpError(404, '分类不存在');
+
+    const dup = db.prepare('SELECT id FROM categories WHERE slug = ? AND id != ?').get(slug, id);
+    if (dup) throw new HttpError(409, '分类 slug 已存在');
+
+    db.prepare('UPDATE categories SET name = ?, slug = ? WHERE id = ?').run(name, slug, id);
+    return payload({ id, name, slug }, '保存成功');
 });
 
-router.post('/categories/delete', categoryDelete);
-router.post('/categories/:id/delete', categoryDelete);
-router.delete('/categories/delete', categoryDelete);
-router.delete('/categories/:id/delete', categoryDelete);
+registerJsonRoute(router, 'post', '/categories/delete', async (ctx) => {
+    const id = parseBodyId(ctx.body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const db = await getDb();
+    const rows = db.prepare('SELECT id FROM categories WHERE id = ?').all(id);
+    if (!rows.length) throw new HttpError(404, '分类不存在');
+    db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+    return payload({ ok: true }, '删除成功');
+});
 
 // --- Tags ---
 
-router.post(
-  '/tags',
-  asyncHandler(async (req, res) => {
-    const body = req.body as Record<string, unknown>;
+registerJsonRoute(router, 'post', '/tags/create', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) throw new HttpError(400, 'name 必填');
     const slug =
@@ -455,54 +431,45 @@ router.post(
     if (dup) throw new HttpError(409, '标签 slug 已存在');
 
     const info = db.prepare('INSERT INTO tags (name, slug) VALUES (?, ?)').run(name, slug);
-    res.status(201).json({ id: info.lastInsertRowid, name, slug });
-  })
-);
-
-const tagEdit = asyncHandler(async (req, res) => {
-  const id = parseBodyId(req.body) ?? parseIdParam(req.query.id) ?? parseIdParam(req.params.id);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const body = req.body as Record<string, unknown>;
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  if (!name) throw new HttpError(400, 'name 必填');
-  let slug =
-    typeof body.slug === 'string' && body.slug.trim()
-      ? slugify(body.slug)
-      : slugify(name);
-  if (!slug) throw new HttpError(400, '无效 slug');
-
-  const db = await getDb();
-  const existRows = db.prepare('SELECT id FROM tags WHERE id = ?').all(id);
-  if (!existRows.length) throw new HttpError(404, '标签不存在');
-
-  const dup = db.prepare('SELECT id FROM tags WHERE slug = ? AND id != ?').get(slug, id);
-  if (dup) throw new HttpError(409, '标签 slug 已存在');
-
-  db.prepare('UPDATE tags SET name = ?, slug = ? WHERE id = ?').run(name, slug, id);
-  res.json({ id, name, slug });
+    return payload({ id: info.lastInsertRowid, name, slug }, '创建成功', 201);
 });
 
-router.post('/tags/edit', tagEdit);
-router.put('/tags/:id', tagEdit);
+registerJsonRoute(router, 'post', '/tags/edit', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
+    const id = parseBodyId(body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) throw new HttpError(400, 'name 必填');
+    let slug =
+      typeof body.slug === 'string' && body.slug.trim()
+        ? slugify(body.slug)
+        : slugify(name);
+    if (!slug) throw new HttpError(400, '无效 slug');
 
-const tagDelete = asyncHandler(async (req, res) => {
-  const id = parseBodyId(req.body) ?? parseIdParam(req.query.id) ?? parseIdParam(req.params.id);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const db = await getDb();
-  const rows = db.prepare('SELECT id FROM tags WHERE id = ?').all(id);
-  if (!rows.length) throw new HttpError(404, '标签不存在');
-  db.prepare('DELETE FROM tags WHERE id = ?').run(id);
-  res.json({ ok: true });
+    const db = await getDb();
+    const existRows = db.prepare('SELECT id FROM tags WHERE id = ?').all(id);
+    if (!existRows.length) throw new HttpError(404, '标签不存在');
+
+    const dup = db.prepare('SELECT id FROM tags WHERE slug = ? AND id != ?').get(slug, id);
+    if (dup) throw new HttpError(409, '标签 slug 已存在');
+
+    db.prepare('UPDATE tags SET name = ?, slug = ? WHERE id = ?').run(name, slug, id);
+    return payload({ id, name, slug }, '保存成功');
 });
 
-router.post('/tags/delete', tagDelete);
-router.delete('/tags/:id', tagDelete);
+registerJsonRoute(router, 'post', '/tags/delete', async (ctx) => {
+    const id = parseBodyId(ctx.body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const db = await getDb();
+    const rows = db.prepare('SELECT id FROM tags WHERE id = ?').all(id);
+    if (!rows.length) throw new HttpError(404, '标签不存在');
+    db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+    return payload({ ok: true }, '删除成功');
+});
 
 // --- Site settings ---
 
-router.get(
-  '/site',
-  asyncHandler(async (_req, res) => {
+registerJsonRoute(router, 'post', '/site/get', async () => {
     const db = await getDb();
     try {
       const rows = db.prepare('SELECT key, value FROM site_settings').all();
@@ -511,18 +478,27 @@ router.get(
         const row = r as SqlRow;
         settings[String(row.key)] = row.value;
       }
-      res.json(settings);
+      const stats = readVisitStats(db);
+      Object.assign(settings, {
+        totalVisits: stats.totalVisits,
+        todayVisits: stats.todayVisits,
+      });
+      return settings;
     } catch {
-      res.json({ site_title: '我的博客', site_description: '', about_content: '' });
+      const stats = readVisitStats(db);
+      return {
+        site_title: '我的博客',
+        site_description: '',
+        about_content: '',
+        totalVisits: stats.totalVisits,
+        todayVisits: stats.todayVisits,
+      };
     }
-  })
-);
+});
 
-router.put(
-  '/site',
-  asyncHandler(async (req, res) => {
+registerJsonRoute(router, 'post', '/site/update', async (ctx) => {
     const db = await getDb();
-    const body = req.body as Record<string, unknown>;
+    const body = ctx.body as Record<string, unknown>;
     const keys = [
       'site_title',
       'site_description',
@@ -548,74 +524,60 @@ router.put(
       const row = r as SqlRow;
       settings[String(row.key)] = row.value;
     }
-    res.json(settings);
-  })
-);
+    return payload(settings, '保存成功');
+});
 
 // --- Links ---
 
-router.get(
-  '/links',
-  asyncHandler(async (_req, res) => {
+registerJsonRoute(router, 'post', '/links/list', async () => {
     const db = await getDb();
     try {
       const rows = db.prepare('SELECT id, title, url, sort FROM links ORDER BY sort ASC, id ASC').all();
-      res.json({ data: rows });
+      return { data: rows };
     } catch {
-      res.json({ data: [] });
+      return { data: [] };
     }
-  })
-);
+});
 
-router.post(
-  '/links',
-  asyncHandler(async (req, res) => {
-    const body = req.body as Record<string, unknown>;
+registerJsonRoute(router, 'post', '/links/create', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
     const title = typeof body.title === 'string' ? body.title.trim() : '';
     const url = typeof body.url === 'string' ? body.url.trim() : '';
     if (!title || !url) throw new HttpError(400, 'title 和 url 必填');
     const sort = parseInt(String(body.sort || '0'), 10) || 0;
     const db = await getDb();
     const info = db.prepare('INSERT INTO links (title, url, sort) VALUES (?, ?, ?)').run(title, url, sort);
-    res.status(201).json({ id: info.lastInsertRowid, title, url, sort });
-  })
-);
-
-const linkEdit = asyncHandler(async (req, res) => {
-  const id = parseBodyId(req.body) ?? parseIdParam(req.query.id) ?? parseIdParam(req.params.id);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const body = req.body as Record<string, unknown>;
-  const title = typeof body.title === 'string' ? body.title.trim() : '';
-  const url = typeof body.url === 'string' ? body.url.trim() : '';
-  if (!title || !url) throw new HttpError(400, 'title 和 url 必填');
-  const sort = parseInt(String(body.sort || '0'), 10) || 0;
-  const db = await getDb();
-  const info = db.prepare('UPDATE links SET title = ?, url = ?, sort = ? WHERE id = ?').run(title, url, sort, id);
-  if (info.changes === 0) throw new HttpError(404, '友链不存在');
-  res.json({ id, title, url, sort });
+    return payload({ id: info.lastInsertRowid, title, url, sort }, '创建成功', 201);
 });
 
-router.post('/links/edit', linkEdit);
-router.put('/links/:id', linkEdit);
-
-const linkDelete = asyncHandler(async (req, res) => {
-  const id = parseBodyId(req.body) ?? parseIdParam(req.query.id) ?? parseIdParam(req.params.id);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const db = await getDb();
-  const info = db.prepare('DELETE FROM links WHERE id = ?').run(id);
-  if (info.changes === 0) throw new HttpError(404, '友链不存在');
-  res.json({ ok: true });
+registerJsonRoute(router, 'post', '/links/edit', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
+    const id = parseBodyId(body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const url = typeof body.url === 'string' ? body.url.trim() : '';
+    if (!title || !url) throw new HttpError(400, 'title 和 url 必填');
+    const sort = parseInt(String(body.sort || '0'), 10) || 0;
+    const db = await getDb();
+    const info = db.prepare('UPDATE links SET title = ?, url = ?, sort = ? WHERE id = ?').run(title, url, sort, id);
+    if (info.changes === 0) throw new HttpError(404, '友链不存在');
+    return payload({ id, title, url, sort }, '保存成功');
 });
 
-router.post('/links/delete', linkDelete);
-router.delete('/links/:id', linkDelete);
+registerJsonRoute(router, 'post', '/links/delete', async (ctx) => {
+    const id = parseBodyId(ctx.body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const db = await getDb();
+    const info = db.prepare('DELETE FROM links WHERE id = ?').run(id);
+    if (info.changes === 0) throw new HttpError(404, '友链不存在');
+    return payload({ ok: true }, '删除成功');
+});
 
 // --- 留言审核 ---
 
-router.get(
-  '/comments',
-  asyncHandler(async (req, res) => {
-    const status = req.query.status;
+registerJsonRoute(router, 'post', '/comments/list', async (ctx) => {
+    const body = (ctx.body || {}) as Record<string, unknown>;
+    const status = body.status;
     const db = await getDb();
     let where = '1=1';
     const params: unknown[] = [];
@@ -634,7 +596,7 @@ router.get(
          LIMIT 500`
       )
       .all(...params);
-    res.json({
+    return {
       data: rows.map((r) => {
         const row = r as SqlRow;
         return {
@@ -649,42 +611,35 @@ router.get(
           createdAt: row.created_at,
         };
       }),
-    });
-  })
-);
+    };
+});
 
-const commentStatusUpdate = asyncHandler(async (req, res) => {
-  const id = parseBodyId(req.body) ?? parseIdParam(req.query.id) ?? parseIdParam(req.params.id);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const body = req.body as Record<string, unknown>;
-  const status =
-    typeof body.status === 'string'
-      ? body.status
-      : typeof req.query.status === 'string'
-        ? req.query.status
+registerJsonRoute(router, 'post', '/comments/edit', async (ctx) => {
+    const body = ctx.body as Record<string, unknown>;
+    const id = parseBodyId(body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const status =
+      typeof body.status === 'string'
+        ? body.status
         : null;
-  if (status !== 'approved' && status !== 'rejected' && status !== 'pending') {
-    throw new HttpError(400, 'status 须为 pending、approved 或 rejected');
-  }
-  const db = await getDb();
-  const info = db.prepare('UPDATE comments SET status = ? WHERE id = ?').run(status, id);
-  if (info.changes === 0) throw new HttpError(404, '留言不存在');
-  res.json({ id, status });
+    if (status !== 'approved' && status !== 'rejected' && status !== 'pending') {
+      throw new HttpError(400, 'status 须为 pending、approved 或 rejected');
+    }
+    const db = await getDb();
+    const info = db.prepare('UPDATE comments SET status = ? WHERE id = ?').run(status, id);
+    if (info.changes === 0) throw new HttpError(404, '留言不存在');
+    return payload({ id, status }, '更新成功');
 });
 
-router.post('/comments/edit', commentStatusUpdate);
-router.put('/comments/:id', commentStatusUpdate);
-
-const commentDelete = asyncHandler(async (req, res) => {
-  const id = parseBodyId(req.body) ?? parseIdParam(req.query.id) ?? parseIdParam(req.params.id);
-  if (id == null) throw new HttpError(400, '无效的 id');
-  const db = await getDb();
-  const info = db.prepare('DELETE FROM comments WHERE id = ?').run(id);
-  if (info.changes === 0) throw new HttpError(404, '留言不存在');
-  res.json({ ok: true });
+registerJsonRoute(router, 'post', '/comments/delete', async (ctx) => {
+    const id = parseBodyId(ctx.body);
+    if (id == null) throw new HttpError(400, '无效的 id');
+    const db = await getDb();
+    const info = db.prepare('DELETE FROM comments WHERE id = ?').run(id);
+    if (info.changes === 0) throw new HttpError(404, '留言不存在');
+    return payload({ ok: true }, '删除成功');
 });
 
-router.post('/comments/delete', commentDelete);
-router.delete('/comments/:id', commentDelete);
+router.use(adminRouterGetFallback);
 
 export default router;

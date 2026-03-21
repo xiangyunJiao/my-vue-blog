@@ -14,10 +14,10 @@ const loading = ref(false)
 async function load() {
   loading.value = true
   try {
-    const params = {}
-    if (statusFilter.value !== 'all') params.status = statusFilter.value
-    const { data } = await admin.comments.list({ params })
-    rows.value = data.data || []
+    const params =
+      statusFilter.value !== 'all' ? { status: statusFilter.value } : undefined
+    const res = await admin.comments.list(params)
+    rows.value = res.data || []
   } catch (e) {
     ElMessage.error(formatApiError(e, '加载失败'))
     rows.value = []

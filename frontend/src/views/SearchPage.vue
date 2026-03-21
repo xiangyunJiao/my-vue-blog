@@ -20,9 +20,9 @@ async function doSearch() {
   }
   loading.value = true
   try {
-    const { data } = await search.posts({ q: q.value, page: page.value, limit })
-    list.value = data.data
-    total.value = data.total
+    const res = await search.posts({ q: q.value, page: page.value, limit })
+    list.value = res.data
+    total.value = res.total
   } catch {
     list.value = []
     total.value = 0

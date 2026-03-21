@@ -60,8 +60,8 @@ async function loadOptions() {
       admin.categories.list(),
       admin.tags.list(),
     ])
-    categories.value = cRes.data.data || []
-    tags.value = tRes.data.data || []
+    categories.value = cRes.data || []
+    tags.value = tRes.data || []
   } catch {
     // ignore
   }
@@ -71,17 +71,17 @@ async function loadPost() {
   if (isNew.value) return
   loading.value = true
   try {
-    const { data } = await admin.posts.get(id.value)
+    const row = await admin.posts.get(id.value)
     form.value = {
-      title: data.title,
-      slug: data.slug,
-      excerpt: data.excerpt || '',
-      body_md: data.bodyMd || '',
-      status: data.status,
-      category_id: data.categoryId || null,
-      tag_ids: (data.tags || []).map((t) => t.id),
-      cover_image: data.coverImage || '',
-      is_pinned: data.isPinned || false,
+      title: row.title,
+      slug: row.slug,
+      excerpt: row.excerpt || '',
+      body_md: row.bodyMd || '',
+      status: row.status,
+      category_id: row.categoryId || null,
+      tag_ids: (row.tags || []).map((t) => t.id),
+      cover_image: row.coverImage || '',
+      is_pinned: row.isPinned || false,
     }
   } catch (e) {
     ElMessage.error(formatApiError(e, '加载失败'))
@@ -152,8 +152,8 @@ async function handleSave() {
       category_id: form.value.category_id || null,
     }
     if (isNew.value) {
-      const { data } = await admin.posts.create(payload)
-      const newId = data.id
+      const created = await admin.posts.create(payload)
+      const newId = created.id
       ElMessage.success(`创建成功，文章 ID：${newId}`)
       await router.replace({ name: 'adminPostEdit', params: { id: String(newId) } })
     } else {

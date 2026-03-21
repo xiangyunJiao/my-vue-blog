@@ -9,7 +9,7 @@ const loading = ref(true)
 onMounted(async () => {
   try {
     const res = await site.get()
-    content.value = res.data?.about_content || ''
+    content.value = res.about_content || ''
   } catch {
     content.value = ''
   } finally {

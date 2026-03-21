@@ -18,9 +18,9 @@ async function fetchList() {
   try {
     const params = { page: page.value, limit: 20 }
     if (statusFilter.value) params.status = statusFilter.value
-    const { data } = await admin.posts.list(params)
-    list.value = data.data
-    total.value = data.total
+    const res = await admin.posts.list(params)
+    list.value = res.data
+    total.value = res.total
   } catch (e) {
     ElMessage.error(formatApiError(e, '加载失败'))
   } finally {

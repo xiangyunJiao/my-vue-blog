@@ -1,139 +1,117 @@
-import axios, { type AxiosInstance } from 'axios';
+import { postMultipart } from './httpClient';
+import { request } from './request';
+import { paths } from './paths';
 
-const baseURL = import.meta.env.VITE_API_BASE || '';
+export { api, postJson, postMultipart } from './httpClient';
+export { request } from './request';
+export { paths } from './paths';
 
-export const api: AxiosInstance = axios.create({
-  baseURL,
-  withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-function genUuidV4(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-function ensureBlogVisitorId(): string | null {
-  if (typeof window === 'undefined') return null;
-  let id = localStorage.getItem('blog_visitor_id');
-  if (!id) {
-    id =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : genUuidV4();
-    localStorage.setItem('blog_visitor_id', id);
-  }
-  return id;
-}
-
-api.interceptors.request.use((config) => {
-  const vid = ensureBlogVisitorId();
-  if (vid) {
-    config.headers['X-Blog-Visitor-Id'] = vid;
-  }
-  return config;
-});
-
+/** 列表/详情等：直接得到拦截器解包后的业务对象（与原先 `await api.get()` 的 `response.data` 一致） */
 export const posts = {
-  list: (params?: Record<string, unknown>) => api.get('/api/posts', { params }),
-  getBySlug: (slug: string) => api.get(`/api/posts/${encodeURIComponent(slug)}`),
-  archive: () => api.get('/api/archive'),
+  list: (params?: Record<string, unknown>) =>
+    request({ url: paths.posts, method: 'GET', params: params as Record<string, unknown> | undefined }),
+  getBySlug: (slug: string) => request({ url: paths.post(slug), method: 'GET' }),
+  archive: () => request({ url: paths.archive, method: 'GET' }),
 };
 
 export const interactions = {
   getComments: (slug: string, params?: Record<string, unknown>) =>
-    api.get(`/api/posts/${encodeURIComponent(slug)}/comments`, { params }),
+    request({
+      url: paths.postComments(slug),
+      method: 'GET',
+      params: params as Record<string, unknown> | undefined,
+    }),
   postComment: (slug: string, data: Record<string, unknown>) =>
-    api.post(`/api/posts/${encodeURIComponent(slug)}/comments`, data),
-  like: (slug: string) => api.post(`/api/posts/${encodeURIComponent(slug)}/like`),
+    request({ url: paths.postComments(slug), method: 'POST', data }),
+  like: (slug: string) => request({ url: paths.postLike(slug), method: 'POST', data: {} }),
 };
 
 export const categories = {
-  list: () => api.get('/api/categories'),
+  list: () => request({ url: paths.categories, method: 'GET' }),
 };
 
 export const tags = {
-  list: () => api.get('/api/tags'),
+  list: () => request({ url: paths.tags, method: 'GET' }),
 };
 
 export const site = {
-  get: () => api.get('/api/site'),
+  get: () => request({ url: paths.site, method: 'GET' }),
+  trackVisit: () => request({ url: paths.visit, method: 'POST', data: {} }),
 };
 
 export const links = {
-  list: () => api.get('/api/links'),
+  list: () => request({ url: paths.links, method: 'GET' }),
 };
 
-// Admin API
 export const auth = {
-  login: (data: { email: string; password: string }) => api.post('/api/auth/login', data),
-  logout: () => api.post('/api/auth/logout'),
-  me: () => api.get('/api/auth/me'),
+  login: (data: { email: string; password: string }) =>
+    request({ url: paths.auth.login, method: 'POST', data: { email: data.email, password: data.password } }),
+  logout: () => request({ url: paths.auth.logout, method: 'POST', data: {} }),
+  me: () => request({ url: paths.auth.me, method: 'GET' }),
 };
 
 export const admin = {
   posts: {
-    list: (params?: Record<string, unknown>) => api.get('/api/admin/posts', { params }),
-    get: (id: string | number) => api.get(`/api/admin/posts/${id}`),
-    create: (data: Record<string, unknown>) => api.post('/api/admin/posts', data),
-    update: (id: string | number, data: Record<string, unknown>) => api.put(`/api/admin/posts/${id}`, data),
-    /** POST + body/query id，避免经 Vite 代理时 DELETE 异常 */
-    remove: (id: string | number) => {
-      const nid = Number(id);
-      return api.post('/api/admin/posts/delete', { id: nid }, { params: { id: nid } });
-    },
+    list: (params?: Record<string, unknown>) =>
+      request({ url: paths.admin.posts.list, method: 'POST', data: params ?? {} }),
+    get: (id: string | number) =>
+      request({ url: paths.admin.posts.detail, method: 'POST', data: { id: Number(id) } }),
+    create: (data: Record<string, unknown>) =>
+      request({ url: paths.admin.posts.create, method: 'POST', data }),
+    update: (id: string | number, data: Record<string, unknown>) =>
+      request({ url: paths.admin.posts.update, method: 'POST', data: { ...data, id: Number(id) } }),
+    remove: (id: string | number) =>
+      request({ url: paths.admin.posts.delete, method: 'POST', data: { id: Number(id) } }),
   },
   categories: {
-    list: () => api.get('/api/categories'),
-    create: (data: Record<string, unknown>) => api.post('/api/admin/categories', data),
-    /** id 放在 URL 路径，最不容易被代理弄丢；body 仍带 id 作双保险 */
+    list: () => request({ url: paths.admin.categories.list, method: 'POST', data: {} }),
+    create: (data: Record<string, unknown>) =>
+      request({ url: paths.admin.categories.create, method: 'POST', data }),
     save: (id: string | number, data: { name: string; slug?: string }) => {
       const nid = Number(id);
       const body: Record<string, unknown> = { id: nid, name: data.name };
       if (data.slug !== undefined && data.slug !== '') body.slug = data.slug;
-      return api.post(`/api/admin/categories/${encodeURIComponent(nid)}/edit`, body);
+      return request({ url: paths.admin.categories.edit, method: 'POST', data: body });
     },
-    remove: (id: string | number) => {
-      const nid = Number(id);
-      return api.post(`/api/admin/categories/${encodeURIComponent(nid)}/delete`, { id: nid });
-    },
+    remove: (id: string | number) =>
+      request({ url: paths.admin.categories.delete, method: 'POST', data: { id: Number(id) } }),
   },
   tags: {
-    list: () => api.get('/api/tags'),
-    create: (data: Record<string, unknown>) => api.post('/api/admin/tags', data),
+    list: () => request({ url: paths.admin.tags.list, method: 'POST', data: {} }),
+    create: (data: Record<string, unknown>) =>
+      request({ url: paths.admin.tags.create, method: 'POST', data }),
     save: (id: string | number, data: { name: string; slug?: string }) => {
       const nid = Number(id);
       const body: Record<string, unknown> = { id: nid, name: data.name };
       if (data.slug !== undefined && data.slug !== '') body.slug = data.slug;
-      return api.post('/api/admin/tags/edit', body, { params: { id: nid } });
+      return request({ url: paths.admin.tags.edit, method: 'POST', data: body });
     },
-    remove: (id: string | number) => {
-      const nid = Number(id);
-      return api.post('/api/admin/tags/delete', { id: nid }, { params: { id: nid } });
-    },
+    remove: (id: string | number) =>
+      request({ url: paths.admin.tags.delete, method: 'POST', data: { id: Number(id) } }),
   },
   site: {
-    get: () => api.get('/api/admin/site'),
-    update: (data: Record<string, unknown>) => api.put('/api/admin/site', data),
+    get: () => request({ url: paths.admin.site.get, method: 'POST', data: {} }),
+    update: (data: Record<string, unknown>) =>
+      request({ url: paths.admin.site.update, method: 'POST', data }),
   },
-  upload: (formData: FormData) => api.post('/api/admin/upload', formData),
+  upload: (formData: FormData) => postMultipart(paths.admin.upload, formData),
   comments: {
-    list: (params?: Record<string, unknown>) => api.get('/api/admin/comments', { params }),
+    list: (params?: { status?: string }) =>
+      request({
+        url: paths.admin.comments.list,
+        method: 'POST',
+        data: params?.status ? { status: params.status } : {},
+      }),
     update: (id: string | number, data: { status: string }) => {
       const nid = Number(id);
-      const status = data.status;
-      return api.post('/api/admin/comments/edit', { id: nid, status }, { params: { id: nid, status } });
+      return request({ url: paths.admin.comments.edit, method: 'POST', data: { id: nid, status: data.status } });
     },
-    remove: (id: string | number) => {
-      const nid = Number(id);
-      return api.post('/api/admin/comments/delete', { id: nid }, { params: { id: nid } });
-    },
+    remove: (id: string | number) =>
+      request({ url: paths.admin.comments.delete, method: 'POST', data: { id: Number(id) } }),
   },
 };
 
 export const search = {
-  posts: (params?: Record<string, unknown>) => api.get('/api/search', { params }),
+  posts: (params?: Record<string, unknown>) =>
+    request({ url: paths.search, method: 'GET', params: params as Record<string, unknown> | undefined }),
 };

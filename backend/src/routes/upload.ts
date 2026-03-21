@@ -3,10 +3,13 @@ import fs from 'fs';
 import { Router } from 'express';
 import multer from 'multer';
 import type { NextFunction, Request, Response } from 'express';
-import { asyncHandler } from '../middleware/asyncHandler';
 import { HttpError } from '../lib/errors';
+import { getHintForPostOnly } from '../lib/getMethodHint';
+import { payload, wrapJsonHandler } from '../lib/apiRoute';
 
 const router = Router();
+
+router.get('/', getHintForPostOnly('图片上传请使用 POST，Content-Type: multipart/form-data，字段名 file。'));
 
 const ALLOWED = /^image\/(jpeg|png|gif|webp)$/i;
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
@@ -53,12 +56,12 @@ router.post(
       next();
     });
   },
-  asyncHandler(async (req, res) => {
-    if (!req.file) {
+  wrapJsonHandler(async (ctx) => {
+    if (!ctx.req.file) {
       throw new HttpError(400, '请选择要上传的图片');
     }
-    const url = `/uploads/${req.file.filename}`;
-    res.json({ url });
+    const url = `/uploads/${ctx.req.file.filename}`;
+    return payload({ url }, '上传成功');
   })
 );
 

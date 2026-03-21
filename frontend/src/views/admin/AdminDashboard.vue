@@ -4,19 +4,22 @@ import { useRouter } from 'vue-router'
 import { admin } from '../../api'
 
 const router = useRouter()
-const stats = ref({ posts: 0, drafts: 0 })
+const stats = ref({ posts: 0, drafts: 0, totalVisits: 0, todayVisits: 0 })
 const recentPosts = ref([])
 
 onMounted(async () => {
   try {
-    const [allRes, draftRes] = await Promise.all([
+    const [allRes, draftRes, siteRes] = await Promise.all([
       admin.posts.list({ limit: 1 }),
       admin.posts.list({ limit: 1, status: 'draft' }),
+      admin.site.get(),
     ])
-    stats.value.posts = allRes.data.total
-    stats.value.drafts = draftRes.data.total
+    stats.value.posts = allRes.total
+    stats.value.drafts = draftRes.total
+    stats.value.totalVisits = Number(siteRes?.totalVisits ?? 0) || 0
+    stats.value.todayVisits = Number(siteRes?.todayVisits ?? 0) || 0
     const listRes = await admin.posts.list({ limit: 5 })
-    recentPosts.value = listRes.data.data
+    recentPosts.value = listRes.data
   } catch {
     // ignore
   }
@@ -31,7 +34,7 @@ function goToPost(id) {
   <div class="dashboard">
     <h1>仪表盘</h1>
     <el-row :gutter="16" style="margin-bottom: 24px">
-      <el-col :span="12">
+      <el-col :span="6">
         <el-card>
           <div class="stat">
             <span class="stat-value">{{ stats.posts }}</span>
@@ -39,11 +42,27 @@ function goToPost(id) {
           </div>
         </el-card>
       </el-col>
-      <el-col :span="12">
+      <el-col :span="6">
         <el-card>
           <div class="stat">
             <span class="stat-value">{{ stats.drafts }}</span>
             <span class="stat-label">草稿</span>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card>
+          <div class="stat">
+            <span class="stat-value">{{ stats.totalVisits }}</span>
+            <span class="stat-label">累计访问</span>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card>
+          <div class="stat">
+            <span class="stat-value">{{ stats.todayVisits }}</span>
+            <span class="stat-label">今日访问</span>
           </div>
         </el-card>
       </el-col>

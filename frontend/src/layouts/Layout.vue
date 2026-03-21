@@ -14,6 +14,8 @@ const categoriesList = ref([])
 const tagsList = ref([])
 const linksList = ref([])
 const darkMode = ref(false)
+const totalVisits = ref(0)
+const todayVisits = ref(0)
 
 const isHome = computed(() => route.path === '/')
 
@@ -25,21 +27,23 @@ onMounted(async () => {
       tags.list(),
       links.list(),
     ])
-    siteTitle.value = siteRes.data?.site_title || '我的博客'
-    siteDesc.value = siteRes.data?.site_description || ''
-    authorName.value = siteRes.data?.author_name || ''
-    authorAvatar.value = siteRes.data?.author_avatar || ''
-    authorBio.value = siteRes.data?.author_bio || ''
+    siteTitle.value = siteRes.site_title || '我的博客'
+    siteDesc.value = siteRes.site_description || ''
+    authorName.value = siteRes.author_name || ''
+    authorAvatar.value = siteRes.author_avatar || ''
+    authorBio.value = siteRes.author_bio || ''
     try {
-      authorLinks.value = typeof siteRes.data?.author_links === 'string'
-        ? JSON.parse(siteRes.data.author_links || '[]')
-        : siteRes.data?.author_links || []
+      authorLinks.value = typeof siteRes.author_links === 'string'
+        ? JSON.parse(siteRes.author_links || '[]')
+        : siteRes.author_links || []
     } catch {
       authorLinks.value = []
     }
-    categoriesList.value = catRes.data?.data || []
-    tagsList.value = tagRes.data?.data || []
-    linksList.value = linkRes.data?.data || []
+    totalVisits.value = Number(siteRes.totalVisits ?? 0) || 0
+    todayVisits.value = Number(siteRes.todayVisits ?? 0) || 0
+    categoriesList.value = catRes.data || []
+    tagsList.value = tagRes.data || []
+    linksList.value = linkRes.data || []
   } catch {
     // use defaults
   }
@@ -102,6 +106,13 @@ function toggleDark() {
             <router-link v-for="t in tagsList" :key="t.id" :to="`/tag/${t.slug}`" class="tag">{{ t.name }}</router-link>
             <span v-if="!tagsList.length" class="muted">暂无</span>
           </div>
+        </section>
+        <section class="sidebar-section">
+          <h3>访问统计</h3>
+          <p class="visit-stats">
+            <span>累计 <strong>{{ totalVisits }}</strong></span>
+            <span>今日 <strong>{{ todayVisits }}</strong></span>
+          </p>
         </section>
         <section class="sidebar-section">
           <h3>订阅与索引</h3>
@@ -338,6 +349,21 @@ function toggleDark() {
 
 .subscribe-links a:hover {
   text-decoration: underline;
+}
+
+.visit-stats {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.visit-stats strong {
+  color: var(--text-h);
+  font-weight: 600;
 }
 
 .muted {

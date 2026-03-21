@@ -11,7 +11,8 @@
     "start": "node dist/index.js",
     "dev": "nodemon --exec tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "verify:create-post": "tsx scripts/verify-create-post.ts",
     "verify:category": "node scripts/verify-category-admin.cjs"
   },
@@ -40,8 +41,11 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.0",
     "@types/sanitize-html": "^2.13.0",
+    "@types/supertest": "^7.2.0",
     "nodemon": "^3.1.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.0"
   }
 }

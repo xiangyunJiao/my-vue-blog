@@ -16,9 +16,9 @@ async function fetchPosts() {
   loading.value = true
   error.value = null
   try {
-    const { data } = await posts.list({ page: page.value, limit })
-    list.value = data.data
-    total.value = data.total
+    const res = await posts.list({ page: page.value, limit })
+    list.value = res.data
+    total.value = res.total
   } catch (e) {
     error.value = formatApiError(e, '加载失败')
   } finally {

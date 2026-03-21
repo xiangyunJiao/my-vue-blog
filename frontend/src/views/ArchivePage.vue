@@ -16,7 +16,7 @@ const sortedYears = computed(() =>
 onMounted(async () => {
   try {
     const res = await posts.archive()
-    data.value = res.data.data || {}
+    data.value = res.data || {}
   } catch {
     data.value = {}
   } finally {

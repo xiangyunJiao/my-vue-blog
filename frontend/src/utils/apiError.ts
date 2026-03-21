@@ -1,5 +1,5 @@
 /**
- * 将 API 错误格式化为展示给用户的文案（后端 `{ ec, em, body }`，不包含状态码前缀）。
+ * 将 API 错误格式化为展示给用户的文案（后端 `{ ec, em, data }`，不包含状态码前缀）。
  */
 export function formatApiError(err: unknown, fallback = '请求失败'): string {
   const res =

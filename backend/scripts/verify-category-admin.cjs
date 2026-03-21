@@ -37,6 +37,12 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** 统一包络 `{ ec, em, body }` 与旧格式兼容 */
+function unwrapApi(json) {
+  if (json && typeof json === 'object' && 'body' in json && 'ec' in json) return json.body;
+  return json;
+}
+
 function cookieFromResponse(res) {
   if (typeof res.headers.getSetCookie === 'function') {
     const parts = res.headers.getSetCookie();
@@ -83,50 +89,50 @@ async function main() {
 
   const authHeaders = { 'Content-Type': 'application/json', Cookie: cookies };
 
-  const createRes = await fetch(`${base}/api/admin/categories`, {
+  const createRes = await fetch(`${base}/api/admin/categories/create`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ name: '验证分类', slug: 'verify-cat-slug' }),
   });
-  const createJson = JSON.parse(await createRes.text());
+  const createJson = unwrapApi(JSON.parse(await createRes.text()));
   if (!createRes.ok) throw new Error(`创建分类失败: ${JSON.stringify(createJson)}`);
   const id = Number(createJson.id);
   if (!Number.isInteger(id) || id <= 0) throw new Error(`无效 id: ${createJson.id}`);
 
-  const editRes = await fetch(`${base}/api/admin/categories/${encodeURIComponent(id)}/edit`, {
+  const editRes = await fetch(`${base}/api/admin/categories/edit`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ id, name: '验证已改', slug: 'verify-cat-edited' }),
   });
-  const editJson = JSON.parse(await editRes.text());
+  const editJson = unwrapApi(JSON.parse(await editRes.text()));
   if (!editRes.ok) throw new Error(`编辑分类失败: ${JSON.stringify(editJson)}`);
 
   const listRes = await fetch(`${base}/api/categories`);
-  const listJson = JSON.parse(await listRes.text());
+  const listJson = unwrapApi(JSON.parse(await listRes.text()));
   const row = (listJson.data || []).find((c) => Number(c.id) === id);
   if (!row || row.name !== '验证已改') {
     throw new Error(`列表与编辑结果不一致: ${JSON.stringify(row)}`);
   }
 
-  const delRes = await fetch(`${base}/api/admin/categories/${encodeURIComponent(id)}/delete`, {
+  const delRes = await fetch(`${base}/api/admin/categories/delete`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ id }),
   });
-  const delJson = JSON.parse(await delRes.text());
+  const delJson = unwrapApi(JSON.parse(await delRes.text()));
   if (!delRes.ok) throw new Error(`删除分类失败: ${JSON.stringify(delJson)}`);
 
-  const list2 = JSON.parse(await (await fetch(`${base}/api/categories`)).text());
+  const list2 = unwrapApi(JSON.parse(await (await fetch(`${base}/api/categories`)).text()));
   if ((list2.data || []).some((c) => Number(c.id) === id)) {
     throw new Error('删除后列表仍含该分类');
   }
 
-  const tagCreateRes = await fetch(`${base}/api/admin/tags`, {
+  const tagCreateRes = await fetch(`${base}/api/admin/tags/create`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ name: '验证标签', slug: 'verify-tag-slug' }),
   });
-  const tagCreateJson = JSON.parse(await tagCreateRes.text());
+  const tagCreateJson = unwrapApi(JSON.parse(await tagCreateRes.text()));
   if (!tagCreateRes.ok) throw new Error(`创建标签失败: ${JSON.stringify(tagCreateJson)}`);
   const tid = Number(tagCreateJson.id);
   const tagEditRes = await fetch(
@@ -147,7 +153,7 @@ async function main() {
   const tagDelJson = JSON.parse(await tagDelRes.text());
   if (!tagDelRes.ok) throw new Error(`删除标签失败: ${JSON.stringify(tagDelJson)}`);
 
-  const postCreateRes = await fetch(`${base}/api/admin/posts`, {
+  const postCreateRes = await fetch(`${base}/api/admin/posts/create`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({
@@ -157,7 +163,7 @@ async function main() {
       status: 'draft',
     }),
   });
-  const postCreateJson = JSON.parse(await postCreateRes.text());
+  const postCreateJson = unwrapApi(JSON.parse(await postCreateRes.text()));
   if (!postCreateRes.ok) throw new Error(`创建文章失败: ${JSON.stringify(postCreateJson)}`);
   const pid = Number(postCreateJson.id);
   const postDelRes = await fetch(`${base}/api/admin/posts/delete`, {
@@ -165,7 +171,7 @@ async function main() {
     headers: authHeaders,
     body: JSON.stringify({ id: pid }),
   });
-  const postDelJson = JSON.parse(await postDelRes.text());
+  const postDelJson = unwrapApi(JSON.parse(await postDelRes.text()));
   if (!postDelRes.ok) throw new Error(`删除文章失败: ${JSON.stringify(postDelJson)}`);
 
   // eslint-disable-next-line no-console

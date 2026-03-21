@@ -9,9 +9,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchUser(): Promise<AuthUser | null> {
     try {
-      const { data } = await authApi.me();
-      user.value = data.user as AuthUser | null;
-      return (data.user as AuthUser | null) ?? null;
+      const payload = (await authApi.me()) as { user: AuthUser | null };
+      user.value = payload.user ?? null;
+      return payload.user ?? null;
     } catch {
       user.value = null;
       return null;
@@ -19,9 +19,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(email: string, password: string): Promise<AuthUser> {
-    const { data } = await authApi.login({ email, password });
-    user.value = data.user as AuthUser;
-    return data.user as AuthUser;
+    const payload = (await authApi.login({ email, password })) as { user: AuthUser };
+    user.value = payload.user;
+    return payload.user;
   }
 
   async function logout(): Promise<void> {

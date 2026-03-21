@@ -152,6 +152,19 @@ function wrapDb(db: import('sql.js').Database): WrappedDatabase {
   };
 }
 
+/** 测试用：关闭连接并清空单例，便于使用独立 SQLite 文件重新 initDb */
+export function resetDbModuleState(): void {
+  try {
+    const db = rawDb as unknown as { close?: () => void } | null;
+    db?.close?.();
+  } catch {
+    /* ignore */
+  }
+  dbInstance = null;
+  dbLoadPromise = null;
+  rawDb = null;
+}
+
 export async function getDb(): Promise<WrappedDatabase> {
   if (dbInstance) return dbInstance;
   if (!dbLoadPromise) {

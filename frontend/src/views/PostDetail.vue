@@ -108,8 +108,7 @@ async function fetchPost() {
   error.value = null
   commentHint.value = ''
   try {
-    const { data } = await posts.getBySlug(slug.value)
-    post.value = data
+    post.value = await posts.getBySlug(slug.value)
   } catch (e) {
     error.value = formatApiError(e, e.response?.status === 404 ? '文章不存在' : '加载失败')
     post.value = null
@@ -122,8 +121,8 @@ async function loadComments() {
   if (!slug.value) return
   commentsLoading.value = true
   try {
-    const { data } = await interactions.getComments(slug.value)
-    comments.value = data.data || []
+    const cRes = await interactions.getComments(slug.value)
+    comments.value = cRes.data || []
   } catch {
     comments.value = []
   } finally {
@@ -135,9 +134,9 @@ async function toggleLike() {
   if (!post.value || likeSubmitting.value) return
   likeSubmitting.value = true
   try {
-    const { data } = await interactions.like(slug.value)
-    post.value.liked = data.liked
-    post.value.likeCount = data.likeCount
+    const likeRes = await interactions.like(slug.value)
+    post.value.liked = likeRes.liked
+    post.value.likeCount = likeRes.likeCount
   } catch (e) {
     alert(formatApiError(e, '点赞失败'))
   } finally {

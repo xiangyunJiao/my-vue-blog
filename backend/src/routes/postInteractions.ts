@@ -3,10 +3,11 @@ import rateLimit from 'express-rate-limit';
 import sanitizeHtml from 'sanitize-html';
 import { getDb } from '../db';
 import type { SqlRow, WrappedDatabase } from '../db/types';
-import { asyncHandler } from '../middleware/asyncHandler';
 import { HttpError } from '../lib/errors';
 import { getVisitorIdFromReq } from '../lib/visitor';
+import { getHintForPostOnly } from '../lib/getMethodHint';
 import { resError } from '../lib/httpJson';
+import { payload, registerJsonRoute } from '../lib/apiRoute';
 
 const router = Router();
 
@@ -48,57 +49,55 @@ function getPublishedPostBySlug(db: WrappedDatabase, slug: string): SqlRow | nul
 }
 
 /** GET /posts/:slug/comments */
-router.get(
-  '/posts/:slug/comments',
-  asyncHandler(async (req, res) => {
-    const slug = paramSlug(req);
-    const db = await getDb();
-    const post = getPublishedPostBySlug(db, slug);
-    if (!post) throw new HttpError(404, '文章不存在');
+registerJsonRoute(router, 'get', '/posts/:slug/comments', async (ctx) => {
+  const slug = paramSlug(ctx.req);
+  const db = await getDb();
+  const post = getPublishedPostBySlug(db, slug);
+  if (!post) throw new HttpError(404, '文章不存在');
 
-    const { page, limit, offset } = parsePageLimit(req.query as Record<string, unknown>);
-    const countRow = db
-      .prepare(`SELECT COUNT(*) AS c FROM comments WHERE post_id = ? AND status = 'approved'`)
-      .get(post.id) as { c: number } | null;
-    const total = countRow?.c ?? 0;
+  const { page, limit, offset } = parsePageLimit(ctx.query);
+  const countRow = db
+    .prepare(`SELECT COUNT(*) AS c FROM comments WHERE post_id = ? AND status = 'approved'`)
+    .get(post.id) as { c: number } | null;
+  const total = countRow?.c ?? 0;
 
-    const rows = db
-      .prepare(
-        `SELECT id, author_name, body, created_at FROM comments
-         WHERE post_id = ? AND status = 'approved'
-         ORDER BY datetime(created_at) ASC
-         LIMIT ? OFFSET ?`
-      )
-      .all(post.id, limit, offset);
+  const rows = db
+    .prepare(
+      `SELECT id, author_name, body, created_at FROM comments
+       WHERE post_id = ? AND status = 'approved'
+       ORDER BY datetime(created_at) ASC
+       LIMIT ? OFFSET ?`
+    )
+    .all(post.id, limit, offset);
 
-    res.json({
-      data: rows.map((r) => {
-        const row = r as SqlRow;
-        return {
-          id: row.id,
-          authorName: row.author_name,
-          body: row.body,
-          createdAt: row.created_at,
-        };
-      }),
-      page,
-      limit,
-      total,
-    });
-  })
-);
+  return {
+    data: rows.map((r) => {
+      const row = r as SqlRow;
+      return {
+        id: row.id,
+        authorName: row.author_name,
+        body: row.body,
+        createdAt: row.created_at,
+      };
+    }),
+    page,
+    limit,
+    total,
+  };
+});
 
 /** POST /posts/:slug/comments */
-router.post(
+registerJsonRoute(
+  router,
+  'post',
   '/posts/:slug/comments',
-  commentPostLimiter,
-  asyncHandler(async (req, res) => {
-    const slug = paramSlug(req);
+  async (ctx) => {
+    const slug = paramSlug(ctx.req);
     const db = await getDb();
     const post = getPublishedPostBySlug(db, slug);
     if (!post) throw new HttpError(404, '文章不存在');
 
-    const bodyObj = req.body as Record<string, unknown>;
+    const bodyObj = ctx.body;
     const authorName = typeof bodyObj.authorName === 'string' ? bodyObj.authorName.trim() : '';
     let authorEmail = typeof bodyObj.authorEmail === 'string' ? bodyObj.authorEmail.trim() : '';
     const rawBody = typeof bodyObj.body === 'string' ? bodyObj.body : '';
@@ -129,24 +128,33 @@ router.post(
       )
       .run(post.id, authorName, authorEmail || null, body);
 
-    res.status(201).json({
-      id: info.lastInsertRowid,
-      message: '提交成功，审核通过后将显示',
-    });
-  })
+    return payload(
+      {
+        id: info.lastInsertRowid,
+        message: '提交成功，审核通过后将显示',
+      },
+      'created',
+      201
+    );
+  },
+  [commentPostLimiter]
 );
 
+/** GET：点赞接口存在，须 POST（地址栏 GET 不会点赞） */
+router.get('/posts/:slug/like', getHintForPostOnly('点赞/取消赞请使用 POST，并带请求头 X-Blog-Visitor-Id（UUID v4）。'));
+
 /** POST /posts/:slug/like — 需请求头 X-Blog-Visitor-Id（UUID v4） */
-router.post(
+registerJsonRoute(
+  router,
+  'post',
   '/posts/:slug/like',
-  likePostLimiter,
-  asyncHandler(async (req, res) => {
-    const visitorId = getVisitorIdFromReq(req);
+  async (ctx) => {
+    const visitorId = getVisitorIdFromReq(ctx.req);
     if (!visitorId) {
       throw new HttpError(400, '请提供有效的 X-Blog-Visitor-Id 请求头（UUID）');
     }
 
-    const slug = paramSlug(req);
+    const slug = paramSlug(ctx.req);
     const db = await getDb();
     const post = getPublishedPostBySlug(db, slug);
     if (!post) throw new HttpError(404, '文章不存在');
@@ -167,8 +175,9 @@ router.post(
     } | null;
     const likeCount = countRow?.c ?? 0;
 
-    res.json({ liked, likeCount });
-  })
+    return { liked, likeCount };
+  },
+  [likePostLimiter]
 );
 
 export default router;

@@ -26,8 +26,8 @@ async function load() {
   loading.value = true
   try {
     const [cRes, tRes] = await Promise.all([admin.categories.list(), admin.tags.list()])
-    categories.value = cRes.data.data || []
-    tags.value = tRes.data.data || []
+    categories.value = cRes.data || []
+    tags.value = tRes.data || []
   } catch (e) {
     ElMessage.error(formatApiError(e, '加载失败'))
   } finally {
