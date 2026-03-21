@@ -394,12 +394,13 @@ onMounted(fetchPost)
 
 /* 覆盖全局 style.css 中大号 h1 / 负字距，避免中文长标题折行时行距塌缩重叠 */
 .article-title {
-  font-size: clamp(1.375rem, 4vw, 2rem);
-  font-weight: 600;
-  line-height: 1.42;
-  letter-spacing: -0.02em;
+  font-size: clamp(1.5rem, 4.2vw, 2.25rem);
+  font-weight: 700;
+  line-height: 1.38;
+  letter-spacing: -0.025em;
   margin: 0 0 14px;
   color: var(--text-h);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
   word-break: break-word;
   overflow-wrap: anywhere;
 }

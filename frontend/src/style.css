@@ -19,6 +19,7 @@
   letter-spacing: 0.18px;
   color-scheme: light dark;
   color: var(--text);
+  /* 与星空页协调；实际博客由 Layout 覆盖前景变量 */
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -50,8 +51,27 @@
   }
 }
 
+html {
+  min-height: 100%;
+  /* 与提亮后的星空同色，避免滚动条/ overscroll 露白 */
+  background: #152038;
+}
+
 body {
   margin: 0;
+  min-height: 100%;
+  background: transparent;
+}
+
+/* 列表页 / 搜索：文章标题层级（星空背景下更易读） */
+.post-title {
+  font-size: clamp(1.25rem, 2.75vw, 1.55rem);
+  font-weight: 700;
+  line-height: 1.38;
+  letter-spacing: -0.02em;
+  color: var(--text-h);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.42);
+  margin: 0 0 10px;
 }
 
 h1,
@@ -157,11 +177,11 @@ code {
 }
 
 #app {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  text-align: inherit;
+  border: none;
   min-height: 100svh;
   display: flex;
   flex-direction: column;

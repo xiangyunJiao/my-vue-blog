@@ -131,16 +131,12 @@ onMounted(fetchPosts)
   opacity: 0.8;
 }
 
-.post-title {
-  font-size: 20px;
-  margin: 0 0 8px;
-}
-
 .post-excerpt {
   font-size: 15px;
   color: var(--text);
   margin: 0 0 12px;
   line-height: 1.5;
+  opacity: 0.95;
 }
 
 .post-meta {

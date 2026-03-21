@@ -108,9 +108,7 @@ watch(() => route.query.q, (v) => {
 
 .post-card:hover { opacity: 0.85; }
 
-.post-title { font-size: 20px; margin: 0 0 8px; }
-
-.post-excerpt { font-size: 15px; color: var(--text); margin: 0 0 12px; line-height: 1.5; }
+.post-excerpt { font-size: 15px; color: var(--text); margin: 0 0 12px; line-height: 1.5; opacity: 0.95; }
 
 .post-meta { font-size: 13px; color: var(--text); opacity: 0.8; }
 

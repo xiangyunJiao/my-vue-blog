@@ -80,8 +80,7 @@ onMounted(fetch)
 .post-card { padding: 20px 0; border-bottom: 1px solid var(--border); cursor: pointer; transition: opacity 0.2s; }
 .post-card:hover { opacity: 0.85; }
 .cover { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; }
-.post-title { font-size: 20px; margin: 0 0 8px; }
-.post-excerpt { font-size: 15px; color: var(--text); margin: 0 0 12px; line-height: 1.5; }
+.post-excerpt { font-size: 15px; color: var(--text); margin: 0 0 12px; line-height: 1.5; opacity: 0.95; }
 .post-meta { font-size: 13px; color: var(--text); opacity: 0.8; }
 .views { margin-left: 12px; opacity: 0.8; }
 .pagination { display: flex; align-items: center; gap: 16px; margin-top: 32px; justify-content: center; }

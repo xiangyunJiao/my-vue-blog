@@ -4,6 +4,7 @@ import { RouterView, useRoute } from 'vue-router'
 import { categories, tags, site, links } from '../api'
 import { SITE_NAME } from '../config/site'
 import { useAuthStore } from '../stores/auth'
+import StarfieldBackground from '../components/StarfieldBackground.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -66,6 +67,8 @@ function toggleDark() {
 
 <template>
   <div class="layout" :class="{ dark: darkMode }">
+    <StarfieldBackground :dark="darkMode" />
+    <div class="layout-chrome">
     <header class="header">
       <div class="header-inner">
         <router-link to="/" class="logo">{{ siteTitle }}</router-link>
@@ -137,31 +140,55 @@ function toggleDark() {
       </div>
       <p class="copyright">© {{ new Date().getFullYear() }} {{ siteTitle }}</p>
     </footer>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .layout {
+  position: relative;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
+  /* 暮光星空上的前景色（浅色模式 = 偏亮星空主题） */
+  --text: rgba(237, 233, 254, 0.92);
+  --text-h: #ffffff;
+  --border: rgba(255, 255, 255, 0.14);
+  --code-bg: rgba(15, 23, 42, 0.5);
+  --accent: #c4b5fd;
+  --accent-bg: rgba(167, 139, 250, 0.22);
+  --glass: rgba(22, 28, 52, 0.32);
+  --glass-nav: rgba(22, 28, 52, 0.4);
 }
 
 .layout.dark {
   --text: #9ca3af;
   --text-h: #f3f4f6;
-  --bg: #111827;
-  --border: #374151;
-  --code-bg: #1f2937;
-  --accent: #60a5fa;
-  --accent-bg: rgba(96, 165, 250, 0.15);
+  --border: rgba(255, 255, 255, 0.1);
+  --code-bg: rgba(31, 41, 55, 0.85);
+  --accent: #7dd3fc;
+  --accent-bg: rgba(56, 189, 248, 0.14);
+  --glass: rgba(10, 14, 28, 0.38);
+  --glass-nav: rgba(10, 14, 28, 0.48);
+}
+
+.layout-chrome {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 .header {
   border-bottom: 1px solid var(--border);
   padding: 12px 24px;
+  background: var(--glass-nav);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .header-inner {
@@ -230,11 +257,22 @@ function toggleDark() {
 
 .main {
   min-width: 0;
+  padding: 4px 8px 16px 4px;
+  border-radius: 12px 0 0 12px;
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .sidebar {
   border-left: 1px solid var(--border);
   padding-left: 18px;
+  padding-top: 4px;
+  padding-bottom: 8px;
+  border-radius: 0 12px 12px 0;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .sidebar-section {
@@ -382,6 +420,9 @@ function toggleDark() {
   border-top: 1px solid var(--border);
   padding: 24px;
   text-align: center;
+  background: var(--glass-nav);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .footer-links {
@@ -409,11 +450,17 @@ function toggleDark() {
     grid-template-columns: 1fr;
   }
 
+  .main {
+    border-radius: 12px;
+    padding: 4px 8px 16px;
+  }
+
   .sidebar {
     border-left: none;
     border-top: 1px solid var(--border);
     padding-left: 0;
     padding-top: 24px;
+    border-radius: 12px;
   }
 }
 </style>
