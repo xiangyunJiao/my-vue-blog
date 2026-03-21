@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { admin } from '../../api'
+import { formatApiError } from '../../utils/apiError'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
@@ -21,7 +22,7 @@ async function fetchList() {
     list.value = data.data
     total.value = data.total
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '加载失败')
+    ElMessage.error(formatApiError(e, '加载失败'))
   } finally {
     loading.value = false
   }
@@ -29,14 +30,14 @@ async function fetchList() {
 
 async function handleDelete(row) {
   try {
-    await ElMessageBox.confirm('确定删除该文章？', '提示', {
+    await ElMessageBox.confirm(`确定删除文章 #${row.id}（${row.title}）？`, '提示', {
       type: 'warning',
     })
-    await admin.posts.delete(row.id)
+    await admin.posts.remove(row.id)
     ElMessage.success('已删除')
     fetchList()
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error(e.response?.data?.error || '删除失败')
+    if (e !== 'cancel') ElMessage.error(formatApiError(e, '删除失败'))
   }
 }
 
@@ -114,5 +115,11 @@ onMounted(fetchList)
 
 .title-link:hover {
   text-decoration: underline;
+}
+
+.col-id {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--el-text-color-regular);
 }
 </style>

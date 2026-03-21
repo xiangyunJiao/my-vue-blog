@@ -9,6 +9,7 @@ import 'prismjs/components/prism-typescript'
 import 'prismjs/components/prism-css'
 import 'prismjs/components/prism-bash'
 import { admin } from '../../api'
+import { formatApiError } from '../../utils/apiError'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
@@ -83,7 +84,7 @@ async function loadPost() {
       is_pinned: data.isPinned || false,
     }
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '加载失败')
+    ElMessage.error(formatApiError(e, '加载失败'))
     router.push('/admin/posts')
   } finally {
     loading.value = false
@@ -109,7 +110,7 @@ async function handleCoverUpload(e) {
     form.value.cover_image = data.url
     ElMessage.success('上传成功')
   } catch (err) {
-    ElMessage.error(err.response?.data?.error || '上传失败')
+    ElMessage.error(formatApiError(err, '上传失败'))
   } finally {
     uploading.value = false
     e.target.value = ''
@@ -132,7 +133,7 @@ async function handleBodyImageUpload(e) {
     form.value.body_md = (form.value.body_md || '') + markdown
     ElMessage.success('已插入图片')
   } catch (err) {
-    ElMessage.error(err.response?.data?.error || '上传失败')
+    ElMessage.error(formatApiError(err, '上传失败'))
   } finally {
     uploading.value = false
     e.target.value = ''
@@ -151,17 +152,28 @@ async function handleSave() {
       category_id: form.value.category_id || null,
     }
     if (isNew.value) {
-      await admin.posts.create(payload)
-      ElMessage.success('创建成功')
+      const { data } = await admin.posts.create(payload)
+      const newId = data.id
+      ElMessage.success(`创建成功，文章 ID：${newId}`)
+      await router.replace({ name: 'adminPostEdit', params: { id: String(newId) } })
     } else {
       await admin.posts.update(id.value, payload)
       ElMessage.success('保存成功')
+      router.push('/admin/posts')
     }
-    router.push('/admin/posts')
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '保存失败')
+    ElMessage.error(formatApiError(e, '保存失败'))
   } finally {
     saving.value = false
+  }
+}
+
+function copyPostId() {
+  const raw = id.value
+  if (raw == null || raw === '') return
+  const text = String(raw)
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => ElMessage.success('已复制 ID')).catch(() => {})
   }
 }
 
@@ -180,6 +192,14 @@ onMounted(() => {
     </div>
     <el-card v-loading="loading">
       <el-form :model="form" label-width="100px">
+        <el-form-item v-if="!isNew" label="文章 ID">
+          <span class="post-id">#{{ id }}</span>
+          <el-button type="primary" link size="small" @click="copyPostId">复制</el-button>
+          <span class="post-id-hint">编辑、删除接口路径中均使用该数字 ID</span>
+        </el-form-item>
+        <el-form-item v-else label="文章 ID">
+          <span class="post-id-muted">保存创建后将自动分配并显示</span>
+        </el-form-item>
         <el-form-item label="标题" required>
           <el-input v-model="form.title" placeholder="文章标题" />
         </el-form-item>
@@ -278,6 +298,23 @@ onMounted(() => {
 .post-edit h1 {
   margin: 0;
   font-size: 24px;
+}
+
+.post-id {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.post-id-hint {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.post-id-muted {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 
 .cover-editor {

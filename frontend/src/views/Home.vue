@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { posts } from '../api'
+import { formatApiError } from '../utils/apiError'
 
 const router = useRouter()
 const list = ref([])
@@ -19,7 +20,7 @@ async function fetchPosts() {
     list.value = data.data
     total.value = data.total
   } catch (e) {
-    error.value = e.response?.data?.error || '加载失败'
+    error.value = formatApiError(e, '加载失败')
   } finally {
     loading.value = false
   }

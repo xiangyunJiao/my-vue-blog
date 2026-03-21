@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { posts, tags } from '../api'
+import { formatApiError } from '../utils/apiError'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,7 +30,7 @@ async function fetch() {
     const t = (tagRes.data.data || []).find((x) => x.slug === slug.value)
     tagName.value = t?.name || slug.value
   } catch (e) {
-    error.value = e.response?.data?.error || '加载失败'
+    error.value = formatApiError(e, '加载失败')
   } finally {
     loading.value = false
   }

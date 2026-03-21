@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { formatApiError } from '../../utils/apiError'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
@@ -21,7 +22,7 @@ async function handleLogin() {
     ElMessage.success('登录成功')
     router.push('/admin')
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '登录失败')
+    ElMessage.error(formatApiError(e, '登录失败'))
   } finally {
     loading.value = false
   }
