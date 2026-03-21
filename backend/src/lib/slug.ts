@@ -1,7 +1,7 @@
 /**
  * 生成 URL slug：小写、空格转连字符、移除非单词字符
  */
-function slugify(input) {
+export function slugify(input: unknown): string {
   if (typeof input !== 'string') return '';
   return input
     .trim()
@@ -11,5 +11,3 @@ function slugify(input) {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 }
-
-module.exports = { slugify };

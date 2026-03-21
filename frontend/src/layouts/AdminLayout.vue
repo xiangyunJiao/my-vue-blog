@@ -22,6 +22,12 @@ async function handleLogout() {
         <el-menu-item index="/admin/posts">
           <span>文章管理</span>
         </el-menu-item>
+        <el-menu-item index="/admin/taxonomy">
+          <span>分类与标签</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/comments">
+          <span>留言管理</span>
+        </el-menu-item>
       </el-menu>
       <div class="sidebar-footer">
         <el-button type="danger" plain size="small" @click="handleLogout">退出登录</el-button>

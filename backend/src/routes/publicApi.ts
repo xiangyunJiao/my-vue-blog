@@ -1,18 +1,25 @@
-const { Router } = require('express');
-const { getDb } = require('../db');
-const { asyncHandler } = require('../middleware/asyncHandler');
-const { HttpError } = require('../lib/errors');
-const { markdownToSafeHtml } = require('../lib/markdown');
+import { Router } from 'express';
+import { getDb } from '../db';
+import type { SqlRow } from '../db/types';
+import { asyncHandler } from '../middleware/asyncHandler';
+import { HttpError } from '../lib/errors';
+import { markdownToSafeHtml } from '../lib/markdown';
+import { getVisitorIdFromReq } from '../lib/visitor';
 
 const router = Router();
 
-function parsePageLimit(query) {
+function paramSlug(req: { params: { slug?: string | string[] } }): string {
+  const s = req.params.slug;
+  return Array.isArray(s) ? String(s[0] ?? '') : String(s ?? '');
+}
+
+function parsePageLimit(query: Record<string, unknown>) {
   const page = Math.max(1, parseInt(String(query.page || '1'), 10) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(String(query.limit || '10'), 10) || 10));
   return { page, limit, offset: (page - 1) * limit };
 }
 
-function mapPostRow(r) {
+function mapPostRow(r: SqlRow) {
   return {
     id: r.id,
     title: r.title,
@@ -33,17 +40,18 @@ function mapPostRow(r) {
 router.get(
   '/posts',
   asyncHandler(async (req, res) => {
-    const { page, limit, offset } = parsePageLimit(req.query);
+    const { page, limit, offset } = parsePageLimit(req.query as Record<string, unknown>);
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
     const tag = typeof req.query.tag === 'string' ? req.query.tag.trim() : '';
     const db = await getDb();
 
     let whereClause = "WHERE p.status = 'published'";
     let joinClause = 'LEFT JOIN categories c ON c.id = p.category_id';
-    const params = [];
+    const params: unknown[] = [];
 
     if (tag) {
-      joinClause += ' INNER JOIN post_tags pt ON pt.post_id = p.id INNER JOIN tags t ON t.id = pt.tag_id AND t.slug = ?';
+      joinClause +=
+        ' INNER JOIN post_tags pt ON pt.post_id = p.id INNER JOIN tags t ON t.id = pt.tag_id AND t.slug = ?';
       params.push(tag);
     }
     if (category) {
@@ -57,7 +65,8 @@ router.get(
         ? `SELECT COUNT(*) AS c FROM posts p LEFT JOIN categories c ON c.id = p.category_id WHERE p.status = 'published' AND c.slug = ?`
         : `SELECT COUNT(*) AS c FROM posts WHERE status = 'published'`;
     const countParams = tag ? [tag] : category ? [category] : [];
-    const total = db.prepare(countSql).get(...countParams)?.c ?? 0;
+    const totalRow = db.prepare(countSql).get(...countParams) as { c: number } | null;
+    const total = totalRow?.c ?? 0;
 
     const orderBy = 'ORDER BY p.is_pinned DESC, datetime(COALESCE(p.published_at, p.created_at)) DESC';
     const listSql = `SELECT p.id, p.title, p.slug, p.excerpt, p.cover_image, p.view_count, p.is_pinned, p.published_at, p.created_at, p.updated_at,
@@ -67,7 +76,7 @@ router.get(
     const rows = db.prepare(listSql).all(...listParams);
 
     res.json({
-      data: rows.map(mapPostRow),
+      data: rows.map((row) => mapPostRow(row as SqlRow)),
       page,
       limit,
       total,
@@ -77,7 +86,7 @@ router.get(
 
 router.get(
   '/archive',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const db = await getDb();
     const rows = db
       .prepare(
@@ -90,13 +99,19 @@ router.get(
       )
       .all();
 
-    const byYearMonth = {};
-    for (const r of rows) {
-      const y = r.year || '0000';
-      const m = r.month || '01';
+    const byYearMonth: Record<string, Record<string, { id: unknown; title: unknown; slug: unknown; publishedAt: unknown }[]>> = {};
+    for (const row of rows) {
+      const r = row as SqlRow;
+      const y = String(r.year || '0000');
+      const m = String(r.month || '01');
       if (!byYearMonth[y]) byYearMonth[y] = {};
       if (!byYearMonth[y][m]) byYearMonth[y][m] = [];
-      byYearMonth[y][m].push({ id: r.id, title: r.title, slug: r.slug, publishedAt: r.published_at });
+      byYearMonth[y][m].push({
+        id: r.id,
+        title: r.title,
+        slug: r.slug,
+        publishedAt: r.published_at,
+      });
     }
 
     res.json({ data: byYearMonth });
@@ -106,7 +121,7 @@ router.get(
 router.get(
   '/posts/:slug',
   asyncHandler(async (req, res) => {
-    const { slug } = req.params;
+    const slug = paramSlug(req);
     const db = await getDb();
     const row = db
       .prepare(
@@ -115,7 +130,7 @@ router.get(
          LEFT JOIN categories c ON c.id = p.category_id
          WHERE p.slug = ? AND p.status = 'published'`
       )
-      .get(slug);
+      .get(slug) as SqlRow | null;
 
     if (!row) throw new HttpError(404, '文章不存在');
 
@@ -135,13 +150,35 @@ router.get(
         `SELECT slug, title FROM posts WHERE status = 'published' AND datetime(COALESCE(published_at, created_at)) < datetime(?)
          ORDER BY datetime(COALESCE(published_at, created_at)) DESC LIMIT 1`
       )
-      .get(ts);
+      .get(ts) as { slug: string; title: string } | null;
     const nextRow = db
       .prepare(
         `SELECT slug, title FROM posts WHERE status = 'published' AND datetime(COALESCE(published_at, created_at)) > datetime(?)
          ORDER BY datetime(COALESCE(published_at, created_at)) ASC LIMIT 1`
       )
-      .get(ts);
+      .get(ts) as { slug: string; title: string } | null;
+
+    let likeCount = 0;
+    let liked = false;
+    let commentCount = 0;
+    try {
+      likeCount =
+        (db.prepare('SELECT COUNT(*) AS c FROM post_likes WHERE post_id = ?').get(row.id) as { c: number } | null)?.c ?? 0;
+      commentCount =
+        (
+          db
+            .prepare(`SELECT COUNT(*) AS c FROM comments WHERE post_id = ? AND status = 'approved'`)
+            .get(row.id) as { c: number } | null
+        )?.c ?? 0;
+      const vid = getVisitorIdFromReq(req);
+      if (vid) {
+        liked = !!db
+          .prepare('SELECT 1 FROM post_likes WHERE post_id = ? AND visitor_id = ?')
+          .get(row.id, vid);
+      }
+    } catch {
+      // 旧库无表时忽略
+    }
 
     res.json({
       id: row.id,
@@ -152,7 +189,10 @@ router.get(
       bodyHtml: markdownToSafeHtml(row.body_md),
       status: row.status,
       coverImage: row.cover_image,
-      viewCount: (row.view_count ?? 0) + 1,
+      viewCount: (Number(row.view_count ?? 0) || 0) + 1,
+      likeCount,
+      liked,
+      commentCount,
       isPinned: !!row.is_pinned,
       publishedAt: row.published_at,
       createdAt: row.created_at,
@@ -160,68 +200,13 @@ router.get(
       category: row.category_id
         ? { id: row.category_id, name: row.category_name, slug: row.category_slug }
         : null,
-      tags: tags.map((t) => ({ id: t.id, name: t.name, slug: t.slug })),
+      tags: tags.map((t) => {
+        const tr = t as SqlRow;
+        return { id: tr.id, name: tr.name, slug: tr.slug };
+      }),
       prev: prevRow ? { slug: prevRow.slug, title: prevRow.title } : null,
       next: nextRow ? { slug: nextRow.slug, title: nextRow.title } : null,
     });
-  })
-);
-
-function escapeXml(s) {
-  if (!s) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-router.get(
-  '/feed.xml',
-  asyncHandler(async (req, res) => {
-    const db = await getDb();
-    const baseUrl = (process.env.PUBLIC_SITE_URL || 'http://localhost:5173').replace(/\/$/, '');
-    let siteTitle = '我的博客';
-    let siteDesc = '';
-    try {
-      const rows = db.prepare('SELECT key, value FROM site_settings').all();
-      for (const r of rows) {
-        if (r.key === 'site_title') siteTitle = r.value || siteTitle;
-        if (r.key === 'site_description') siteDesc = r.value || '';
-      }
-    } catch {
-      // use defaults
-    }
-    const posts = db
-      .prepare(
-        `SELECT title, slug, excerpt, published_at FROM posts
-         WHERE status = 'published'
-         ORDER BY datetime(COALESCE(published_at, created_at)) DESC
-         LIMIT 20`
-      )
-      .all();
-    const items = posts
-      .map(
-        (p) => `
-    <item>
-      <title>${escapeXml(p.title)}</title>
-      <link>${escapeXml(baseUrl + '/post/' + p.slug)}</link>
-      <description>${escapeXml(p.excerpt || '')}</description>
-      <pubDate>${new Date(p.published_at || p.created_at).toUTCString()}</pubDate>
-    </item>`
-      )
-      .join('');
-    const rss = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>${escapeXml(siteTitle)}</title>
-    <link>${escapeXml(baseUrl)}</link>
-    <description>${escapeXml(siteDesc)}</description>
-    <language>zh-CN</language>${items}
-  </channel>
-</rss>`;
-    res.type('application/rss+xml').send(rss);
   })
 );
 
@@ -229,7 +214,7 @@ router.get(
   '/search',
   asyncHandler(async (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-    const { page, limit, offset } = parsePageLimit(req.query);
+    const { page, limit, offset } = parsePageLimit(req.query as Record<string, unknown>);
     const db = await getDb();
 
     if (!q) {
@@ -243,7 +228,7 @@ router.get(
         `SELECT COUNT(*) AS c FROM posts p
          WHERE p.status = 'published' AND (p.title LIKE ? OR p.excerpt LIKE ? OR p.body_md LIKE ?)`
       )
-      .get(term, term, term);
+      .get(term, term, term) as { c: number } | null;
     const total = countRow?.c ?? 0;
 
     const rows = db
@@ -259,7 +244,7 @@ router.get(
       .all(term, term, term, limit, offset);
 
     res.json({
-      data: rows.map(mapPostRow),
+      data: rows.map((row) => mapPostRow(row as SqlRow)),
       page,
       limit,
       total,
@@ -269,7 +254,7 @@ router.get(
 
 router.get(
   '/categories',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const db = await getDb();
     const rows = db.prepare('SELECT id, name, slug, created_at FROM categories ORDER BY name').all();
     res.json({ data: rows });
@@ -278,7 +263,7 @@ router.get(
 
 router.get(
   '/tags',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const db = await getDb();
     const rows = db.prepare('SELECT id, name, slug, created_at FROM tags ORDER BY name').all();
     res.json({ data: rows });
@@ -287,12 +272,15 @@ router.get(
 
 router.get(
   '/site',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const db = await getDb();
     try {
       const rows = db.prepare('SELECT key, value FROM site_settings').all();
-      const settings = {};
-      for (const r of rows) settings[r.key] = r.value;
+      const settings: Record<string, unknown> = {};
+      for (const r of rows) {
+        const row = r as SqlRow;
+        settings[String(row.key)] = row.value;
+      }
       res.json(settings);
     } catch {
       res.json({ site_title: '我的博客', site_description: '', about_content: '' });
@@ -302,7 +290,7 @@ router.get(
 
 router.get(
   '/links',
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const db = await getDb();
     try {
       const rows = db.prepare('SELECT id, title, url, sort FROM links ORDER BY sort ASC, id ASC').all();
@@ -313,4 +301,4 @@ router.get(
   })
 );
 
-module.exports = router;
+export default router;

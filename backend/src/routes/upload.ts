@@ -1,9 +1,10 @@
-const path = require('path');
-const fs = require('fs');
-const { Router } = require('express');
-const multer = require('multer');
-const { asyncHandler } = require('../middleware/asyncHandler');
-const { HttpError } = require('../lib/errors');
+import path from 'path';
+import fs from 'fs';
+import { Router } from 'express';
+import multer from 'multer';
+import type { NextFunction, Request, Response } from 'express';
+import { asyncHandler } from '../middleware/asyncHandler';
+import { HttpError } from '../lib/errors';
 
 const router = Router();
 
@@ -16,8 +17,8 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname) || '.jpg';
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
     cb(null, name);
@@ -27,7 +28,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: MAX_SIZE },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     if (!ALLOWED.test(file.mimetype)) {
       cb(new HttpError(400, '仅支持 jpg、png、gif、webp 格式'));
       return;
@@ -38,14 +39,15 @@ const upload = multer({
 
 router.post(
   '/',
-  (req, res, next) => {
-    upload.single('file')(req, res, (err) => {
+  (req: Request, res: Response, next: NextFunction) => {
+    upload.single('file')(req, res, (err: unknown) => {
       if (err) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
+        const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : '';
+        if (code === 'LIMIT_FILE_SIZE') {
           next(new HttpError(400, '图片不超过 2MB'));
           return;
         }
-        next(err);
+        next(err as Error);
         return;
       }
       next();
@@ -60,4 +62,4 @@ router.post(
   })
 );
 
-module.exports = router;
+export default router;

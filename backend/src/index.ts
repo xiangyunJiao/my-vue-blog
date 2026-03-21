@@ -1,20 +1,23 @@
-require('dotenv').config();
+import 'dotenv/config';
 
-const path = require('path');
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const session = require('express-session');
+import path from 'path';
+import express from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
+import session from 'express-session';
 
-const { initDb } = require('./db');
-const { errorHandler } = require('./middleware/errorHandler');
-const { requireAuth } = require('./middleware/requireAuth');
+import { initDb } from './db';
+import { errorHandler } from './middleware/errorHandler';
+import { resError } from './lib/httpJson';
+import { requireAuth } from './middleware/requireAuth';
 
-const healthRouter = require('./routes/health');
-const authRouter = require('./routes/auth');
-const publicApiRouter = require('./routes/publicApi');
-const adminRouter = require('./routes/admin');
-const uploadRouter = require('./routes/upload');
+import syndicationRouter from './routes/syndication';
+import healthRouter from './routes/health';
+import postInteractionsRouter from './routes/postInteractions';
+import authRouter from './routes/auth';
+import publicApiRouter from './routes/publicApi';
+import adminRouter from './routes/admin';
+import uploadRouter from './routes/upload';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const isProd = process.env.NODE_ENV === 'production';
@@ -24,8 +27,7 @@ if (isProd && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length 
   process.exit(1);
 }
 
-const sessionSecret =
-  process.env.SESSION_SECRET || 'dev-only-change-me-not-for-production';
+const sessionSecret = process.env.SESSION_SECRET || 'dev-only-change-me-not-for-production';
 
 if (!isProd && sessionSecret.includes('dev-only')) {
   console.warn('[警告] 使用开发环境默认 SESSION_SECRET，切勿用于生产');
@@ -61,14 +63,16 @@ app.use(
 );
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/api', syndicationRouter);
 app.use('/api', healthRouter);
+app.use('/api', postInteractionsRouter);
 app.use('/api/auth', authRouter);
 app.use('/api', publicApiRouter);
 app.use('/api/admin', requireAuth, adminRouter);
 app.use('/api/admin/upload', requireAuth, uploadRouter);
 
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not Found' });
+app.use((_req, res) => {
+  resError(res, 404, 'Not Found');
 });
 
 app.use(errorHandler);
@@ -79,7 +83,7 @@ initDb()
       console.info(`Blog API 监听 http://localhost:${PORT}`);
     });
   })
-  .catch((err) => {
+  .catch((err: unknown) => {
     console.error('数据库初始化失败:', err);
     process.exit(1);
   });

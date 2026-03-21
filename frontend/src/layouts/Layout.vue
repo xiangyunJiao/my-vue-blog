@@ -104,8 +104,11 @@ function toggleDark() {
           </div>
         </section>
         <section class="sidebar-section">
-          <h3>订阅</h3>
-          <a href="/api/feed.xml" target="_blank" rel="noopener noreferrer">RSS 订阅</a>
+          <h3>订阅与索引</h3>
+          <div class="subscribe-links">
+            <a href="/api/rss" target="_blank" rel="noopener noreferrer">RSS 订阅</a>
+            <a href="/api/sitemap" target="_blank" rel="noopener noreferrer">站点地图</a>
+          </div>
         </section>
       </aside>
     </div>
@@ -320,6 +323,21 @@ function toggleDark() {
   background: var(--accent-bg);
   border-radius: 4px;
   font-size: 13px;
+}
+
+.subscribe-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subscribe-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.subscribe-links a:hover {
+  text-decoration: underline;
 }
 
 .muted {

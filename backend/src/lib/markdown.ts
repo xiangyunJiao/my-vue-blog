@@ -1,5 +1,5 @@
-const { marked } = require('marked');
-const sanitizeHtml = require('sanitize-html');
+import { marked } from 'marked';
+import sanitizeHtml from 'sanitize-html';
 
 const sanitizeOptions = {
   allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'h1', 'h2', 'pre', 'code']),
@@ -12,10 +12,8 @@ const sanitizeOptions = {
   allowedSchemes: ['http', 'https', 'mailto'],
 };
 
-function markdownToSafeHtml(md) {
+export function markdownToSafeHtml(md: unknown): string {
   if (!md || typeof md !== 'string') return '';
-  const raw = marked.parse(md, { async: false });
+  const raw = marked.parse(md, { async: false }) as string;
   return sanitizeHtml(raw, sanitizeOptions);
 }
-
-module.exports = { markdownToSafeHtml };
