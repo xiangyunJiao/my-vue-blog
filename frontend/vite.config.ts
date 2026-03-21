@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { SITE_NAME_DEFAULT } from '../config/site';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -13,7 +14,7 @@ export default defineConfig(({ mode }) => {
    * 导致 VITE_DEV_API_PROXY 未生效、代理指向错误端口，从而出现 POST /api/... 404。
    */
   const env = loadEnv(mode, __dirname, '');
-  const siteTitle = (env.VITE_SITE_NAME || '我的博客').replace(/</g, '');
+  const siteTitle = (env.VITE_SITE_NAME || SITE_NAME_DEFAULT).replace(/</g, '');
   /** 与 backend/.env 的 PORT 一致；未设置 VITE_DEV_API_PROXY 时默认 3000 */
   const apiTarget = (env.VITE_DEV_API_PROXY || 'http://127.0.0.1:3000').replace(/\/$/, '');
 

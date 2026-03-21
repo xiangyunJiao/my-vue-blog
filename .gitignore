@@ -4,6 +4,7 @@ backend/node_modules/
 backend/.env
 backend/data/
 backend/uploads/
+backend/dist/
 # 本地维护用脚本（如一次性 SQL），仅放本机，勿提交仓库
 backend/scripts/local/
 
