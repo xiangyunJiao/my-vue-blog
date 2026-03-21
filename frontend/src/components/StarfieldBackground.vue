@@ -220,12 +220,12 @@ const meteors = computed(() =>
   border-radius: 0;
   background: linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(248, 250, 255, 0.92) 5%,
-    rgba(224, 242, 254, 0.45) 22%,
-    rgba(186, 230, 253, 0.18) 48%,
-    rgba(125, 211, 252, 0.06) 72%,
-    transparent 100%
+    transparent 0%,
+    rgba(125, 211, 252, 0.06) 28%,
+    rgba(186, 230, 253, 0.18) 52%,
+    rgba(224, 242, 254, 0.45) 78%,
+    rgba(248, 250, 255, 0.92) 95%,
+    rgba(255, 255, 255, 1) 100%
   );
   box-shadow: none;
   opacity: 0;
@@ -236,7 +236,7 @@ const meteors = computed(() =>
 .meteor::before {
   content: '';
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: 50%;
   width: 2px;
   height: 2px;
