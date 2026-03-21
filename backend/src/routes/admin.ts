@@ -11,6 +11,7 @@ import { slugify } from '../lib/slug';
 import { markdownToSafeHtml } from '../lib/markdown';
 import { adminRouterGetFallback } from '../lib/getMethodHint';
 import { readVisitStats } from '../lib/visitStats';
+import { DEFAULT_SITE_NAME } from '../config/site';
 import { payload, registerJsonRoute } from '../lib/apiRoute';
 
 const router = Router();
@@ -487,7 +488,7 @@ registerJsonRoute(router, 'post', '/site/get', async () => {
     } catch {
       const stats = readVisitStats(db);
       return {
-        site_title: '我的博客',
+        site_title: DEFAULT_SITE_NAME,
         site_description: '',
         about_content: '',
         totalVisits: stats.totalVisits,

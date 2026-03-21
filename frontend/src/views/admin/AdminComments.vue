@@ -90,7 +90,7 @@ function openPost(slug) {
             @click="setStatus(row, 'approved')"
           >通过</el-button>
           <el-button
-            v-if="row.status !== 'rejected'"
+            v-if="row.status === 'pending'"
             link
             type="warning"
             size="small"

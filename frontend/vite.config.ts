@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
    * 导致 VITE_DEV_API_PROXY 未生效、代理指向错误端口，从而出现 POST /api/... 404。
    */
   const env = loadEnv(mode, __dirname, '');
+  const siteTitle = (env.VITE_SITE_NAME || '我的博客').replace(/</g, '');
   /** 与 backend/.env 的 PORT 一致；未设置 VITE_DEV_API_PROXY 时默认 3000 */
   const apiTarget = (env.VITE_DEV_API_PROXY || 'http://127.0.0.1:3000').replace(/\/$/, '');
 
@@ -24,7 +25,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: __dirname,
-    plugins: [vue()],
+    plugins: [
+      vue(),
+      {
+        name: 'inject-site-title',
+        transformIndexHtml(html: string) {
+          return html.replace(/<title>.*?<\/title>/, `<title>${siteTitle}</title>`);
+        },
+      },
+    ],
     server: { proxy },
     preview: { proxy },
   };

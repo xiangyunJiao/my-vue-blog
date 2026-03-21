@@ -37,6 +37,8 @@ const coverInputRef = ref(null)
 const bodyImageInputRef = ref(null)
 const bodyPreviewRef = ref(null)
 const bodyPreviewLayout = ref('split')
+/** 发布时间（仅 status=published 时提交）；新建不选则由后端填当前时间 */
+const publishedAtDate = ref(null)
 
 const bodyHtml = computed(() => {
   const md = form.value.body_md || ''
@@ -83,6 +85,7 @@ async function loadPost() {
       cover_image: row.coverImage || '',
       is_pinned: row.isPinned || false,
     }
+    publishedAtDate.value = row.publishedAt ? new Date(row.publishedAt) : null
   } catch (e) {
     ElMessage.error(formatApiError(e, '加载失败'))
     router.push('/admin/posts')
@@ -151,6 +154,9 @@ async function handleSave() {
       ...form.value,
       category_id: form.value.category_id || null,
     }
+    if (form.value.status === 'published' && publishedAtDate.value) {
+      payload.published_at = publishedAtDate.value.toISOString()
+    }
     if (isNew.value) {
       const created = await admin.posts.create(payload)
       const newId = created.id
@@ -217,7 +223,7 @@ onMounted(() => {
                 <el-radio-button value="edit">仅编辑</el-radio-button>
                 <el-radio-button value="preview">仅预览</el-radio-button>
               </el-radio-group>
-              <el-button size="small" :loading="uploading" @click="bodyImageInputRef?.value?.click()">
+              <el-button size="small" :loading="uploading" @click="bodyImageInputRef?.click()">
                 插入图片
               </el-button>
             </div>
@@ -253,7 +259,7 @@ onMounted(() => {
         <el-form-item label="封面图">
           <div class="cover-editor">
             <el-input v-model="form.cover_image" placeholder="图片 URL 或点击上传" style="flex:1" />
-            <el-button :loading="uploading" @click="coverInputRef?.value?.click()">上传</el-button>
+            <el-button :loading="uploading" @click="coverInputRef?.click()">上传</el-button>
             <input ref="coverInputRef" type="file" accept="image/*" style="display:none" @change="handleCoverUpload" />
           </div>
           <img v-if="form.cover_image" :src="form.cover_image" class="cover-preview" alt="" />
@@ -273,6 +279,15 @@ onMounted(() => {
             <el-radio value="draft">草稿</el-radio>
             <el-radio value="published">发布</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="form.status === 'published'" label="发布时间">
+          <el-date-picker
+            v-model="publishedAtDate"
+            type="datetime"
+            placeholder="选择日期时间"
+            style="width: 100%; max-width: 400px"
+          />
+          <p class="field-hint">前台列表与文章页按该时间展示。</p>
         </el-form-item>
         <el-form-item label="置顶">
           <el-switch v-model="form.is_pinned" />
@@ -315,6 +330,13 @@ onMounted(() => {
 .post-id-muted {
   font-size: 13px;
   color: var(--el-text-color-secondary);
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
 }
 
 .cover-editor {

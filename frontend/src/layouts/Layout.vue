@@ -2,9 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import { categories, tags, site, links } from '../api'
+import { SITE_NAME } from '../config/site'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
-const siteTitle = ref('我的博客')
+const authStore = useAuthStore()
+const siteTitle = ref(SITE_NAME)
 const siteDesc = ref('')
 const authorName = ref('')
 const authorAvatar = ref('')
@@ -20,6 +23,7 @@ const todayVisits = ref(0)
 const isHome = computed(() => route.path === '/')
 
 onMounted(async () => {
+  void authStore.fetchUser()
   try {
     const [siteRes, catRes, tagRes, linkRes] = await Promise.all([
       site.get(),
@@ -27,7 +31,10 @@ onMounted(async () => {
       tags.list(),
       links.list(),
     ])
-    siteTitle.value = siteRes.site_title || '我的博客'
+    siteTitle.value = siteRes.site_title || SITE_NAME
+    if (siteTitle.value) {
+      document.title = siteTitle.value
+    }
     siteDesc.value = siteRes.site_description || ''
     authorName.value = siteRes.author_name || ''
     authorAvatar.value = siteRes.author_avatar || ''
@@ -67,7 +74,7 @@ function toggleDark() {
           <router-link to="/search">搜索</router-link>
           <router-link to="/archive">归档</router-link>
           <router-link to="/about">关于</router-link>
-          <router-link to="/admin" class="admin-link">管理</router-link>
+          <router-link v-if="authStore.user" to="/admin" class="admin-link">管理</router-link>
         </nav>
         <button class="dark-toggle" :title="darkMode ? '浅色' : '深色'" @click="toggleDark">
           {{ darkMode ? '☀' : '☽' }}
@@ -215,8 +222,8 @@ function toggleDark() {
   margin: 0 auto;
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr 260px;
-  gap: 32px;
+  grid-template-columns: 1fr 200px;
+  gap: 28px;
   padding: 24px;
   box-sizing: border-box;
 }
@@ -227,7 +234,7 @@ function toggleDark() {
 
 .sidebar {
   border-left: 1px solid var(--border);
-  padding-left: 24px;
+  padding-left: 18px;
 }
 
 .sidebar-section {

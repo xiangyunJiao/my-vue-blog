@@ -5,5 +5,8 @@ import 'element-plus/dist/index.css';
 import './style.css';
 import App from './App.vue';
 import router from './router';
+import { SITE_NAME } from './config/site';
+
+document.title = SITE_NAME;
 
 createApp(App).use(createPinia()).use(router).use(ElementPlus).mount('#app');

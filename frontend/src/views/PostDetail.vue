@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { marked, Renderer } from 'marked'
 import Prism from 'prismjs'
 import 'prismjs/themes/prism-tomorrow.css'
@@ -12,7 +12,6 @@ import { posts, interactions } from '../api'
 import { formatApiError } from '../utils/apiError'
 
 const route = useRoute()
-const router = useRouter()
 const post = ref(null)
 const loading = ref(true)
 const error = ref(null)
@@ -184,10 +183,6 @@ function formatDate(iso) {
   })
 }
 
-function goBack() {
-  router.push('/')
-}
-
 watch(slug, fetchPost)
 watch(
   () => markdownRender.value.html,
@@ -201,14 +196,13 @@ onMounted(fetchPost)
 
 <template>
   <main class="post-detail">
-    <button class="back" @click="goBack">← 返回</button>
     <p v-if="loading" class="loading">加载中…</p>
     <p v-else-if="error" class="error">{{ error }}</p>
     <div v-else-if="post" class="post-with-toc">
       <article class="article">
-        <header>
+        <header class="article-header">
           <img v-if="post.coverImage" :src="post.coverImage" class="cover" alt="" />
-          <h1>{{ post.title }}</h1>
+          <h1 class="article-title">{{ post.title }}</h1>
           <div class="meta">
             <router-link v-if="post.category" :to="`/category/${post.category.slug}`" class="category">{{ post.category.name }}</router-link>
             <time>{{ formatDate(post.publishedAt) }}</time>
@@ -305,20 +299,6 @@ onMounted(fetchPost)
   text-align: left;
 }
 
-.back {
-  margin-bottom: 24px;
-  padding: 6px 0;
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 15px;
-}
-
-.back:hover {
-  text-decoration: underline;
-}
-
 .loading,
 .error {
   color: var(--text);
@@ -347,7 +327,7 @@ onMounted(fetchPost)
   .post-with-toc {
     flex-direction: row;
     align-items: flex-start;
-    gap: 32px;
+    gap: 44px;
   }
 
   .post-with-toc .article {
@@ -359,6 +339,7 @@ onMounted(fetchPost)
   .post-with-toc .toc {
     order: 2;
     flex: 0 0 200px;
+    margin-left: 8px;
     position: sticky;
     top: 16px;
     max-height: calc(100vh - 32px);
@@ -399,7 +380,7 @@ onMounted(fetchPost)
   opacity: 0.95;
 }
 
-.article header {
+.article-header {
   margin-bottom: 32px;
 }
 
@@ -411,29 +392,53 @@ onMounted(fetchPost)
   margin-bottom: 20px;
 }
 
-.article h1 {
-  font-size: 32px;
-  margin: 0 0 12px;
+/* 覆盖全局 style.css 中大号 h1 / 负字距，避免中文长标题折行时行距塌缩重叠 */
+.article-title {
+  font-size: clamp(1.375rem, 4vw, 2rem);
+  font-weight: 600;
+  line-height: 1.42;
+  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+  color: var(--text-h);
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  row-gap: 8px;
   font-size: 14px;
+  line-height: 1.5;
   color: var(--text);
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
 .meta .category {
-  margin-right: 12px;
   color: var(--accent);
   text-decoration: none;
 }
 
+.meta .category:hover {
+  text-decoration: underline;
+}
+
+.meta time {
+  white-space: nowrap;
+}
+
 .meta .views {
-  margin-right: 12px;
+  white-space: nowrap;
 }
 
 .meta .tags {
-  margin-left: 12px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
 }
 
 .tag {

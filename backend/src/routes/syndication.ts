@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { DEFAULT_SITE_NAME } from '../config/site';
 import { getDb } from '../db';
 import { asyncHandler } from '../middleware/asyncHandler';
 import type { SqlRow } from '../db/types';
@@ -18,7 +19,7 @@ function escapeXml(s: unknown): string {
 const sendFeedXml = asyncHandler(async (_req, res) => {
   const db = await getDb();
   const baseUrl = (process.env.PUBLIC_SITE_URL || 'http://localhost:5173').replace(/\/$/, '');
-  let siteTitle = '我的博客';
+  let siteTitle = DEFAULT_SITE_NAME;
   let siteDesc = '';
   try {
     const rows = db.prepare('SELECT key, value FROM site_settings').all();

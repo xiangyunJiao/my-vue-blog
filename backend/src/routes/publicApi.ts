@@ -5,6 +5,7 @@ import { HttpError } from '../lib/errors';
 import { markdownToSafeHtml } from '../lib/markdown';
 import { getVisitorIdFromReq } from '../lib/visitor';
 import { getHintForPostOnly } from '../lib/getMethodHint';
+import { DEFAULT_SITE_NAME } from '../config/site';
 import { readVisitStats } from '../lib/visitStats';
 import { registerJsonRoute } from '../lib/apiRoute';
 
@@ -271,7 +272,7 @@ registerJsonRoute(router, 'get', '/site', async () => {
   } catch {
     const stats = readVisitStats(db);
     return {
-      site_title: '我的博客',
+      site_title: DEFAULT_SITE_NAME,
       site_description: '',
       about_content: '',
       totalVisits: stats.totalVisits,

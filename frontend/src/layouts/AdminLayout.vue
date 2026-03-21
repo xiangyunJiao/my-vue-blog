@@ -1,8 +1,9 @@
 <script setup>
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 async function handleLogout() {
@@ -30,6 +31,15 @@ async function handleLogout() {
         </el-menu-item>
       </el-menu>
       <div class="sidebar-footer">
+        <el-button
+          v-if="route.name !== 'admin'"
+          class="to-blog"
+          type="primary"
+          link
+          @click="router.push('/')"
+        >
+          ← 返回博客首页
+        </el-button>
         <el-button type="danger" plain size="small" @click="handleLogout">退出登录</el-button>
       </div>
     </aside>
@@ -66,6 +76,17 @@ async function handleLogout() {
 
 .sidebar-footer {
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.to-blog {
+  justify-content: flex-start;
+  padding: 0;
+  height: auto;
+  font-weight: 500;
 }
 
 .main {
