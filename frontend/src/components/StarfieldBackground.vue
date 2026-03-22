@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+/**
+ * 星空背景（原理：几乎纯 CSS）
+ * - 天幕/星云/极光：多层 div + linear/radial-gradient 与 @keyframes transform/opacity
+ * - 星点：单 div 的 background-image 叠加大量 radial-gradient（较耗合成层，已控制数量）
+ * - 流星：若干 div，每条为 1px 宽 + linear-gradient 拖尾 + ::before 弹头，animation 只做 transform/opacity（GPU 友好）
+ * Vue 仅负责：根据暗色切换 class、生成稳定随机参数、绑定 style
+ */
 withDefaults(
   defineProps<{
     dark?: boolean;
@@ -8,7 +15,7 @@ withDefaults(
   { dark: false }
 );
 
-/** 随机但稳定的星点 */
+/** 随机但稳定的星点（数量已压缩，减轻单层超大 background 绘制压力） */
 const starLayers = computed(() => {
   const mk = (seed: number, count: number, opacity: number, size: number) => {
     const out: string[] = [];
@@ -27,15 +34,17 @@ const starLayers = computed(() => {
     }
     return out;
   };
-  return [...mk(11, 100, 0.7, 1), ...mk(29, 55, 0.5, 1.5), ...mk(47, 18, 0.95, 2.5)].join(',');
+  return [...mk(11, 52, 0.7, 1), ...mk(29, 30, 0.5, 1.5), ...mk(47, 12, 0.95, 2.5)].join(',');
 });
 
-/** 统一方向：左上 → 右下；远景略短略淡；细长拖尾由 CSS 多层渐变 + ::after 实现 */
+/** 统一方向：左上 → 右下；条数略减；横向铺满约 2%～98%，竖向起点拉开以覆盖全屏轨迹 */
+const METEOR_COUNT = 32;
+
 const meteors = computed(() =>
-  Array.from({ length: 44 }, (_, i) => {
-    const left = ((i * 43 + 17) % 91) + 4.5;
-    const top = -5 - (i % 9) * 1.8;
-    const delay = ((i * 0.39) % 13) + (i % 4) * 0.12;
+  Array.from({ length: METEOR_COUNT }, (_, i) => {
+    const left = ((i * 47 + 19) % 960) / 10 + 2;
+    const top = -12 - (i % 11) * 2.2;
+    const delay = ((i * 0.41) % 13) + (i % 4) * 0.12;
     const duration = 2.6 + (i % 12) * 0.48;
     const far = i % 4 === 0;
     const height = far ? 110 + (i % 6) * 12 : 168 + (i % 9) * 14;
@@ -86,6 +95,8 @@ const meteors = computed(() =>
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  /* 独立合成层，减少与前景文档的交错重绘 */
+  transform: translateZ(0);
 }
 
 .starfield-sky {
@@ -159,7 +170,7 @@ const meteors = computed(() =>
     transparent 100%
   );
   opacity: 0.85;
-  filter: blur(28px);
+  filter: blur(20px);
   animation: aurora-sweep 18s ease-in-out infinite;
   pointer-events: none;
 }
@@ -185,7 +196,8 @@ const meteors = computed(() =>
   inset: 0;
   background-repeat: no-repeat;
   background-size: 100% 100%;
-  animation: twinkle 7s ease-in-out infinite;
+  animation: twinkle 9s ease-in-out infinite;
+  contain: strict;
 }
 
 @keyframes twinkle {
@@ -229,7 +241,6 @@ const meteors = computed(() =>
   );
   box-shadow: none;
   opacity: 0;
-  will-change: transform, opacity;
   animation: meteor-diagonal linear infinite;
 }
 
@@ -247,9 +258,7 @@ const meteors = computed(() =>
   box-shadow: 0 0 3px 1px rgba(255, 255, 255, 0.75);
 }
 
-.meteor--far {
-  filter: blur(0.2px);
-}
+/* 远景不再用 filter，避免每颗流星单独走模糊合成 */
 
 .meteor--far::before {
   width: 1.5px;
@@ -260,7 +269,7 @@ const meteors = computed(() =>
 
 @keyframes meteor-diagonal {
   0% {
-    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(-28vh);
+    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(-42vh);
     opacity: 0;
   }
   5% {
@@ -270,7 +279,8 @@ const meteors = computed(() =>
     opacity: 0.72;
   }
   100% {
-    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(128vh);
+    /* 总位移约 180vh，适配长屏；配合 meteor-layer 负 inset 覆盖整页 */
+    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(138vh);
     opacity: 0;
   }
 }

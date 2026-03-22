@@ -114,11 +114,11 @@ describe('visit stats', () => {
     expect(b2.counted).toBe(false);
   });
 
-  it('GET /api/site includes totalVisits', async () => {
+  it('GET /api/site does not expose visit counts (admin only)', async () => {
     const res = await request(app).get('/api/site');
     const body = ok<Record<string, unknown>>(res);
-    expect(typeof body.totalVisits).toBe('number');
-    expect(typeof body.todayVisits).toBe('number');
+    expect(body.totalVisits).toBeUndefined();
+    expect(body.todayVisits).toBeUndefined();
   });
 });
 
@@ -310,6 +310,35 @@ describe('public API with data', () => {
     expect(body.message).toBeTruthy();
   });
 
+  it('POST /api/posts/public-read/comments with parentId', async () => {
+    const listRes = await request(app).get('/api/posts/public-read/comments');
+    const listBody = ok<{ data: { id: number }[] }>(listRes);
+    const parentId = listBody.data[0]?.id;
+    expect(parentId).toBeDefined();
+    const res = await request(app)
+      .post('/api/posts/public-read/comments')
+      .send({
+        authorName: 'replier',
+        body: 'reply to parent',
+        parentId,
+      });
+    ok(res, 201);
+  });
+
+  it('POST /api/posts/public-read/comments as logged-in admin reply without authorName', async () => {
+    const logged = request.agent(app);
+    await logged.post('/api/auth/login').send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
+    const listRes = await request(app).get('/api/posts/public-read/comments');
+    const listBody = ok<{ data: { id: number }[] }>(listRes);
+    const parentId = listBody.data[0]?.id;
+    expect(parentId).toBeDefined();
+    const res = await logged.post('/api/posts/public-read/comments').send({
+      body: 'owner reply without client nickname',
+      parentId,
+    });
+    ok(res, 201);
+  });
+
   it('POST like', async () => {
     const res = await request(app)
       .post('/api/posts/public-read/like')
@@ -333,7 +362,7 @@ describe('admin without auth', () => {
   });
 });
 
-/** 依赖 public API 已产生待审核留言 */
+/** 依赖 public API 已产生已发布文章与公开留言 */
 describe('admin extended mutations', () => {
   let a: request.Agent;
 
@@ -342,18 +371,20 @@ describe('admin extended mutations', () => {
     await a.post('/api/auth/login').send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
   });
 
-  it('POST /api/admin/comments/list pending', async () => {
-    const res = await a.post('/api/admin/comments/list').send({ status: 'pending' });
+  it('POST /api/admin/comments/list approved', async () => {
+    const res = await a.post('/api/admin/comments/list').send({ status: 'approved' });
     const body = ok<{ data: { id: number }[] }>(res);
     expect(body.data.length).toBeGreaterThan(0);
   });
 
-  it('POST /api/admin/comments/edit approve', async () => {
-    const listRes = await a.post('/api/admin/comments/list').send({ status: 'pending' });
+  it('POST /api/admin/comments/edit rejected then approved', async () => {
+    const listRes = await a.post('/api/admin/comments/list').send({ status: 'approved' });
     const list = ok<{ data: { id: number }[] }>(listRes);
     const id = list.data[0].id;
-    const res = await a.post('/api/admin/comments/edit').send({ id, status: 'approved' });
-    ok(res);
+    const res1 = await a.post('/api/admin/comments/edit').send({ id, status: 'rejected' });
+    ok(res1);
+    const res2 = await a.post('/api/admin/comments/edit').send({ id, status: 'approved' });
+    ok(res2);
   });
 
   it('POST /api/admin/posts/update', async () => {

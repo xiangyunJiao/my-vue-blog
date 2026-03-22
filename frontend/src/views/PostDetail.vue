@@ -8,10 +8,13 @@ import 'prismjs/components/prism-javascript'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/components/prism-css'
 import 'prismjs/components/prism-bash'
-import { posts, interactions } from '../api'
+import { posts, interactions, site } from '../api'
 import { formatApiError } from '../utils/apiError'
+import { useAuthStore } from '../stores/auth'
+import CommentThread from '../components/CommentThread.vue'
 
 const route = useRoute()
+const authStore = useAuthStore()
 const post = ref(null)
 const loading = ref(true)
 const error = ref(null)
@@ -21,6 +24,43 @@ const commentsLoading = ref(false)
 const commentForm = ref({ authorName: '', authorEmail: '', body: '' })
 const commentHint = ref('')
 const likeSubmitting = ref(false)
+/** 回复某条留言时携带 parentId；与主贴留言相同接口 */
+const replyingTo = ref(null)
+const commentFormEl = ref(null)
+/** 站点设置里的作者名，用于「博主回复」展示 */
+const siteAuthorLabel = ref('博主')
+
+const isOwnerReplyMode = computed(
+  () => !!(authStore.user && replyingTo.value)
+)
+
+/** 本地记住上次留言使用的昵称、邮箱，下次默认带出，可改 */
+const LS_COMMENT_NAME = 'blog_comment_author_name'
+const LS_COMMENT_EMAIL = 'blog_comment_author_email'
+
+function loadSavedAuthor() {
+  try {
+    const name = localStorage.getItem(LS_COMMENT_NAME)
+    const email = localStorage.getItem(LS_COMMENT_EMAIL)
+    if (name != null && name !== '') commentForm.value.authorName = name
+    if (email != null && email !== '') commentForm.value.authorEmail = email
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistSavedAuthor() {
+  try {
+    const name = commentForm.value.authorName.trim()
+    const email = commentForm.value.authorEmail.trim()
+    if (name) localStorage.setItem(LS_COMMENT_NAME, name)
+    else localStorage.removeItem(LS_COMMENT_NAME)
+    if (email) localStorage.setItem(LS_COMMENT_EMAIL, email)
+    else localStorage.removeItem(LS_COMMENT_EMAIL)
+  } catch {
+    /* ignore */
+  }
+}
 
 const slug = computed(() => route.params.slug)
 
@@ -101,6 +141,36 @@ const markdownRender = computed(() => {
   return { html: marked.parse(md, { renderer }), toc }
 })
 
+/** 将扁平留言转为树，子回复挂在父留言下展示 */
+function buildCommentTree(flat) {
+  const list = Array.isArray(flat) ? flat : []
+  if (!list.length) return []
+  const byId = new Map()
+  for (const c of list) {
+    byId.set(c.id, { ...c, children: [] })
+  }
+  const roots = []
+  for (const c of list) {
+    const node = byId.get(c.id)
+    const pid = c.parentId ?? c.parent_id
+    if (pid != null && byId.has(pid)) {
+      byId.get(pid).children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  function sortCh(nodes) {
+    nodes.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    for (const n of nodes) {
+      if (n.children?.length) sortCh(n.children)
+    }
+  }
+  sortCh(roots)
+  return roots
+}
+
+const commentTree = computed(() => buildCommentTree(comments.value))
+
 async function fetchPost() {
   if (!slug.value) return
   loading.value = true
@@ -122,6 +192,9 @@ async function loadComments() {
   try {
     const cRes = await interactions.getComments(slug.value)
     comments.value = cRes.data || []
+    if (post.value != null && typeof cRes.total === 'number') {
+      post.value.commentCount = cRes.total
+    }
   } catch {
     comments.value = []
   } finally {
@@ -146,7 +219,7 @@ async function toggleLike() {
 async function submitComment() {
   const authorName = commentForm.value.authorName.trim()
   const body = commentForm.value.body.trim()
-  if (!authorName) {
+  if (!isOwnerReplyMode.value && !authorName) {
     alert('请填写昵称')
     return
   }
@@ -155,16 +228,41 @@ async function submitComment() {
     return
   }
   try {
-    await interactions.postComment(slug.value, {
-      authorName,
-      authorEmail: commentForm.value.authorEmail.trim() || undefined,
-      body,
-    })
-    commentHint.value = '提交成功，审核通过后将显示在下方。'
-    commentForm.value = { authorName: '', authorEmail: '', body: '' }
+    const commentPayload = { body }
+    if (isOwnerReplyMode.value) {
+      commentPayload.authorName = ''
+      commentPayload.authorEmail = undefined
+    } else {
+      commentPayload.authorName = authorName
+      commentPayload.authorEmail = commentForm.value.authorEmail.trim() || undefined
+    }
+    if (replyingTo.value?.id != null) {
+      commentPayload.parentId = replyingTo.value.id
+    }
+    await interactions.postComment(slug.value, commentPayload)
+    commentHint.value = '留言成功'
+    if (!isOwnerReplyMode.value) {
+      persistSavedAuthor()
+    }
+    commentForm.value.body = ''
+    replyingTo.value = null
+    await loadComments()
   } catch (e) {
     alert(formatApiError(e, '提交失败'))
   }
+}
+
+function startReply(c) {
+  replyingTo.value = { id: c.id, authorName: c.authorName }
+  nextTick(() => {
+    commentFormEl.value?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+    const el = document.getElementById('c-body')
+    el?.focus?.()
+  })
+}
+
+function cancelReply() {
+  replyingTo.value = null
 }
 
 watch(
@@ -183,7 +281,12 @@ function formatDate(iso) {
   })
 }
 
-watch(slug, fetchPost)
+watch(slug, () => {
+  commentForm.value.body = ''
+  commentHint.value = ''
+  replyingTo.value = null
+  fetchPost()
+})
 watch(
   () => markdownRender.value.html,
   async () => {
@@ -191,7 +294,17 @@ watch(
     if (bodyRef.value) Prism.highlightAllUnder(bodyRef.value)
   }
 )
-onMounted(fetchPost)
+onMounted(async () => {
+  loadSavedAuthor()
+  try {
+    const s = await site.get()
+    const n = typeof s.author_name === 'string' ? s.author_name.trim() : ''
+    siteAuthorLabel.value = n || '博主'
+  } catch {
+    siteAuthorLabel.value = '博主'
+  }
+  fetchPost()
+})
 </script>
 
 <template>
@@ -230,37 +343,54 @@ onMounted(fetchPost)
         <section class="comments-section" aria-label="留言">
           <h2 class="comments-title">留言</h2>
           <p v-if="commentsLoading" class="muted">加载留言中…</p>
-          <ul v-else class="comment-list">
-            <li v-for="c in comments" :key="c.id" class="comment-item">
-              <div class="comment-meta">
-                <strong>{{ c.authorName }}</strong>
-                <time>{{ formatDate(c.createdAt) }}</time>
-              </div>
-              <p class="comment-body">{{ c.body }}</p>
-            </li>
-            <li v-if="!comments.length" class="muted">暂无留言，欢迎第一个发言。</li>
-          </ul>
+          <template v-else>
+            <ul v-if="!commentTree.length" class="comment-list">
+              <li class="muted">暂无留言，欢迎第一个发言。</li>
+            </ul>
+            <ul v-else class="comment-list comment-list--threaded">
+              <CommentThread
+                v-for="node in commentTree"
+                :key="node.id"
+                :node="node"
+                :format-date="formatDate"
+                @reply="startReply"
+              />
+            </ul>
+          </template>
 
           <p v-if="commentHint" class="comment-hint">{{ commentHint }}</p>
-          <form class="comment-form" @submit.prevent="submitComment">
-            <label class="sr-only" for="c-name">昵称</label>
-            <input
-              id="c-name"
-              v-model="commentForm.authorName"
-              type="text"
-              placeholder="昵称（必填）"
-              maxlength="64"
-              class="input"
-            />
-            <label class="sr-only" for="c-email">邮箱</label>
-            <input
-              id="c-email"
-              v-model="commentForm.authorEmail"
-              type="email"
-              placeholder="邮箱（选填）"
-              maxlength="254"
-              class="input"
-            />
+          <p v-if="replyingTo" class="comment-reply-banner">
+            正在回复 <strong>{{ replyingTo.authorName }}</strong>
+            <button type="button" class="comment-reply-cancel" @click="cancelReply">取消</button>
+          </p>
+          <p v-if="isOwnerReplyMode" class="owner-reply-hint">
+            你已登录管理账号，将以站点昵称「<strong>{{ siteAuthorLabel }}</strong>」回复。
+          </p>
+          <form ref="commentFormEl" class="comment-form" @submit.prevent="submitComment">
+            <template v-if="!isOwnerReplyMode">
+              <label class="sr-only" for="c-name">昵称</label>
+              <input
+                id="c-name"
+                v-model="commentForm.authorName"
+                type="text"
+                name="comment-author-name"
+                autocomplete="nickname"
+                placeholder="昵称（必填）"
+                maxlength="64"
+                class="input"
+              />
+              <label class="sr-only" for="c-email">邮箱</label>
+              <input
+                id="c-email"
+                v-model="commentForm.authorEmail"
+                type="email"
+                name="comment-author-email"
+                autocomplete="email"
+                placeholder="邮箱（选填）"
+                maxlength="254"
+                class="input"
+              />
+            </template>
             <label class="sr-only" for="c-body">内容</label>
             <textarea
               id="c-body"
@@ -541,25 +671,37 @@ onMounted(fetchPost)
   flex-wrap: wrap;
 }
 
+/* 与 Layout 的浅色 --text 脱钩：白底按钮须用深色字（否则与留言框同类问题） */
 .like-btn {
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: #ffffff;
+  color: #111827;
   cursor: pointer;
   font-size: 14px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .like-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: #a78bfa;
+  color: #5b21b6;
+  background: #f5f3ff;
 }
 
 .like-btn.liked {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-bg);
+  border-color: rgba(216, 180, 254, 0.75);
+  color: #faf5ff;
+  background: rgba(109, 40, 217, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1px rgba(167, 139, 250, 0.2);
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .like-btn:disabled {
@@ -591,33 +733,38 @@ onMounted(fetchPost)
   margin: 0 0 24px;
 }
 
-.comment-item {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+.comment-list--threaded {
+  padding: 0;
 }
 
-.comment-item:last-child {
-  border-bottom: none;
-}
-
-.comment-meta {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
+.comment-reply-banner {
+  margin: 0 0 12px;
   font-size: 14px;
-  margin-bottom: 8px;
+  color: var(--text-h);
 }
 
-.comment-meta time {
+.comment-reply-cancel {
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.owner-reply-hint {
+  margin: 0 0 12px;
   font-size: 13px;
-  opacity: 0.75;
+  line-height: 1.5;
+  color: var(--text);
+  opacity: 0.92;
+  max-width: 560px;
 }
 
-.comment-body {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.6;
+.owner-reply-hint strong {
+  color: var(--text-h);
 }
 
 .muted {
@@ -639,17 +786,35 @@ onMounted(fetchPost)
   max-width: 560px;
 }
 
+/* 与 Layout 的浅色 --text 脱钩：输入区为浅底，须用深色字，否则白底上会「发灰」 */
 .comment-form .input,
 .comment-form .textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(15, 23, 42, 0.18);
   border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
+  background: #ffffff;
+  color: #111827;
   font-size: 15px;
   font-family: inherit;
+}
+
+.comment-form .input::placeholder,
+.comment-form .textarea::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+
+.comment-form .input:-webkit-autofill,
+.comment-form .input:-webkit-autofill:hover,
+.comment-form .input:-webkit-autofill:focus,
+.comment-form .textarea:-webkit-autofill,
+.comment-form .textarea:-webkit-autofill:hover,
+.comment-form .textarea:-webkit-autofill:focus {
+  -webkit-text-fill-color: #111827;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  transition: background-color 99999s ease-out;
 }
 
 .comment-form .textarea {
@@ -681,5 +846,55 @@ onMounted(fetchPost)
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   border: 0;
+}
+</style>
+
+<!-- 深色切换时 Layout 仍用浅色 --text，留言框单独保证对比度（无 scoped 以便命中祖先 .layout.dark） -->
+<style>
+.layout.dark .comment-form .input,
+.layout.dark .comment-form .textarea {
+  background: rgba(15, 23, 42, 0.94);
+  color: #e5e7eb;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.layout.dark .comment-form .input::placeholder,
+.layout.dark .comment-form .textarea::placeholder {
+  color: #9ca3af;
+  opacity: 1;
+}
+
+.layout.dark .comment-form .input:-webkit-autofill,
+.layout.dark .comment-form .input:-webkit-autofill:hover,
+.layout.dark .comment-form .input:-webkit-autofill:focus,
+.layout.dark .comment-form .textarea:-webkit-autofill,
+.layout.dark .comment-form .textarea:-webkit-autofill:hover,
+.layout.dark .comment-form .textarea:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e5e7eb;
+  box-shadow: 0 0 0 1000px rgba(15, 23, 42, 0.94) inset;
+  transition: background-color 99999s ease-out;
+}
+
+.layout.dark .like-btn {
+  background: rgba(15, 23, 42, 0.88);
+  color: #e5e7eb;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.layout.dark .like-btn:hover:not(:disabled) {
+  border-color: #67e8f9;
+  color: #ecfeff;
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.layout.dark .like-btn.liked {
+  border-color: rgba(165, 243, 252, 0.55);
+  color: #f0fdfa;
+  background: rgba(34, 211, 238, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(103, 232, 249, 0.15);
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 </style>

@@ -244,13 +244,29 @@ registerJsonRoute(router, 'get', '/search', async (ctx) => {
 
 registerJsonRoute(router, 'get', '/categories', async () => {
   const db = await getDb();
-  const rows = db.prepare('SELECT id, name, slug, created_at FROM categories ORDER BY name').all();
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.name, c.slug, c.created_at,
+        (SELECT COUNT(*) FROM posts p WHERE p.category_id = c.id AND p.status = 'published') AS post_count
+       FROM categories c
+       ORDER BY c.name`
+    )
+    .all();
   return { data: rows };
 });
 
 registerJsonRoute(router, 'get', '/tags', async () => {
   const db = await getDb();
-  const rows = db.prepare('SELECT id, name, slug, created_at FROM tags ORDER BY name').all();
+  const rows = db
+    .prepare(
+      `SELECT t.id, t.name, t.slug, t.created_at,
+        (SELECT COUNT(*) FROM posts p
+           INNER JOIN post_tags pt ON pt.post_id = p.id AND pt.tag_id = t.id
+           WHERE p.status = 'published') AS post_count
+       FROM tags t
+       ORDER BY t.name`
+    )
+    .all();
   return { data: rows };
 });
 
@@ -263,20 +279,12 @@ registerJsonRoute(router, 'get', '/site', async () => {
       const row = r as SqlRow;
       settings[String(row.key)] = row.value;
     }
-    const stats = readVisitStats(db);
-    Object.assign(settings, {
-      totalVisits: stats.totalVisits,
-      todayVisits: stats.todayVisits,
-    });
     return settings;
   } catch {
-    const stats = readVisitStats(db);
     return {
       site_title: DEFAULT_SITE_NAME,
       site_description: '',
       about_content: '',
-      totalVisits: stats.totalVisits,
-      todayVisits: stats.todayVisits,
     };
   }
 });

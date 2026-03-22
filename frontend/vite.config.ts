@@ -35,7 +35,10 @@ export default defineConfig(({ mode }) => {
         },
       },
     ],
-    server: { proxy },
+    server: {
+      host: true, // 监听 0.0.0.0，便于手机在同一 WiFi 下访问
+      proxy,
+    },
     preview: { proxy },
   };
 });

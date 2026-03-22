@@ -589,9 +589,11 @@ registerJsonRoute(router, 'post', '/comments/list', async (ctx) => {
     const rows = db
       .prepare(
         `SELECT c.id, c.post_id, c.author_name, c.author_email, c.body, c.status, c.created_at,
+          c.parent_id, par.author_name AS parent_author_name,
           p.title AS post_title, p.slug AS post_slug
          FROM comments c
          INNER JOIN posts p ON p.id = c.post_id
+         LEFT JOIN comments par ON par.id = c.parent_id
          WHERE ${where}
          ORDER BY datetime(c.created_at) DESC
          LIMIT 500`
@@ -610,6 +612,8 @@ registerJsonRoute(router, 'post', '/comments/list', async (ctx) => {
           body: row.body,
           status: row.status,
           createdAt: row.created_at,
+          parentId: row.parent_id != null ? row.parent_id : null,
+          parentAuthorName: row.parent_author_name != null ? String(row.parent_author_name) : null,
         };
       }),
     };
@@ -636,6 +640,7 @@ registerJsonRoute(router, 'post', '/comments/delete', async (ctx) => {
     const id = parseBodyId(ctx.body);
     if (id == null) throw new HttpError(400, '无效的 id');
     const db = await getDb();
+    db.prepare('UPDATE comments SET parent_id = NULL WHERE parent_id = ?').run(id);
     const info = db.prepare('DELETE FROM comments WHERE id = ?').run(id);
     if (info.changes === 0) throw new HttpError(404, '留言不存在');
     return payload({ ok: true }, '删除成功');

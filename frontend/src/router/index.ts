@@ -60,17 +60,17 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to: RouteLocationNormalized, _from: RouteLocationNormalized, next: NavigationGuardNext) => {
-  if (to.meta.requiresAuth) {
-    const authStore = useAuthStore();
-    const user = authStore.user ?? (await authStore.fetchUser());
-    if (!user) {
-      next({ name: 'adminLogin', query: { redirect: to.fullPath } });
-    } else {
-      next();
-    }
-  } else {
-    next();
+  const authStore = useAuthStore();
+  try {
+    await authStore.fetchUser();
+  } catch {
+    /* 网络错误时不阻断路由；未登录由 fetchUser 清空 user */
   }
+  if (to.meta.requiresAuth && !authStore.user) {
+    next({ name: 'adminLogin', query: { redirect: to.fullPath } });
+    return;
+  }
+  next();
 });
 
 export default router;

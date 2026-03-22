@@ -18,13 +18,45 @@ const categoriesList = ref([])
 const tagsList = ref([])
 const linksList = ref([])
 const darkMode = ref(false)
-const totalVisits = ref(0)
-const todayVisits = ref(0)
+
+/** 后端字段 post_count；兼容旧缓存或异常结构 */
+function categoryPostCount(c) {
+  const n = c.post_count ?? c.postCount
+  const v = Number(n)
+  return Number.isFinite(v) ? v : 0
+}
+
+function tagPostCount(t) {
+  const n = t.post_count ?? t.postCount
+  const v = Number(n)
+  return Number.isFinite(v) ? v : 0
+}
+
+/** 按 slug 稳定哈希配色，侧栏标签彼此区分 */
+function tagPillStyle(slug) {
+  const s = String(slug || '')
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  const hue = Math.abs(h) % 360
+  return {
+    background: `hsla(${hue}, 38%, 32%, 0.72)`,
+    color: `hsla(${hue}, 62%, 90%, 0.98)`,
+    border: `1px solid hsla(${hue}, 35%, 50%, 0.35)`,
+  }
+}
 
 const isHome = computed(() => route.path === '/')
 
+const categoriesWithPosts = computed(() =>
+  categoriesList.value.filter((c) => categoryPostCount(c) > 0)
+)
+
+const tagsWithPosts = computed(() => tagsList.value.filter((t) => tagPostCount(t) > 0))
+
 onMounted(async () => {
-  void authStore.fetchUser()
   try {
     const [siteRes, catRes, tagRes, linkRes] = await Promise.all([
       site.get(),
@@ -47,8 +79,6 @@ onMounted(async () => {
     } catch {
       authorLinks.value = []
     }
-    totalVisits.value = Number(siteRes.totalVisits ?? 0) || 0
-    todayVisits.value = Number(siteRes.todayVisits ?? 0) || 0
     categoriesList.value = catRes.data || []
     tagsList.value = tagRes.data || []
     linksList.value = linkRes.data || []
@@ -79,9 +109,7 @@ function toggleDark() {
           <router-link to="/about">关于</router-link>
           <router-link v-if="authStore.user" to="/admin" class="admin-link">管理</router-link>
         </nav>
-        <button class="dark-toggle" :title="darkMode ? '浅色' : '深色'" @click="toggleDark">
-          {{ darkMode ? '☀' : '☽' }}
-        </button>
+        
       </div>
     </header>
 
@@ -104,25 +132,28 @@ function toggleDark() {
         <section class="sidebar-section">
           <h3>分类</h3>
           <ul>
-            <li v-for="c in categoriesList" :key="c.id">
-              <router-link :to="`/category/${c.slug}`">{{ c.name }}</router-link>
+            <li v-for="c in categoriesWithPosts" :key="c.id">
+              <router-link :to="`/category/${c.slug}`" class="sidebar-cat-link">
+                {{ c.name }}（{{ categoryPostCount(c) }}）
+              </router-link>
             </li>
-            <li v-if="!categoriesList.length"><span class="muted">暂无</span></li>
+            <li v-if="!categoriesWithPosts.length"><span class="muted">暂无</span></li>
           </ul>
         </section>
         <section class="sidebar-section">
           <h3>标签</h3>
           <div class="tag-cloud">
-            <router-link v-for="t in tagsList" :key="t.id" :to="`/tag/${t.slug}`" class="tag">{{ t.name }}</router-link>
-            <span v-if="!tagsList.length" class="muted">暂无</span>
+            <router-link
+              v-for="t in tagsWithPosts"
+              :key="t.id"
+              :to="`/tag/${t.slug}`"
+              class="tag tag-pill"
+              :style="tagPillStyle(t.slug)"
+            >
+              {{ t.name }}（{{ tagPostCount(t) }}）
+            </router-link>
+            <span v-if="!tagsWithPosts.length" class="muted">暂无</span>
           </div>
-        </section>
-        <section class="sidebar-section">
-          <h3>访问统计</h3>
-          <p class="visit-stats">
-            <span>累计 <strong>{{ totalVisits }}</strong></span>
-            <span>今日 <strong>{{ todayVisits }}</strong></span>
-          </p>
         </section>
         <section class="sidebar-section">
           <h3>订阅与索引</h3>
@@ -233,16 +264,6 @@ function toggleDark() {
   opacity: 0.8;
 }
 
-.dark-toggle {
-  margin-left: auto;
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px 8px;
-  color: var(--text);
-}
-
 .body {
   flex: 1;
   max-width: 1100px;
@@ -259,8 +280,8 @@ function toggleDark() {
   min-width: 0;
   padding: 4px 8px 16px 4px;
   border-radius: 12px 0 0 12px;
-  background: var(--glass);
-  backdrop-filter: blur(10px);
+  /* background: var(--glass);
+  backdrop-filter: blur(10px); */
   -webkit-backdrop-filter: blur(10px);
 }
 
@@ -374,11 +395,17 @@ function toggleDark() {
   gap: 8px;
 }
 
-.tag-cloud .tag {
-  padding: 2px 8px;
-  background: var(--accent-bg);
+.tag-cloud .tag-pill {
+  padding: 2px 7px;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+
+.tag-cloud a.tag-pill:hover {
+  filter: brightness(1.1);
 }
 
 .subscribe-links {
@@ -394,21 +421,6 @@ function toggleDark() {
 
 .subscribe-links a:hover {
   text-decoration: underline;
-}
-
-.visit-stats {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.visit-stats strong {
-  color: var(--text-h);
-  font-weight: 600;
 }
 
 .muted {

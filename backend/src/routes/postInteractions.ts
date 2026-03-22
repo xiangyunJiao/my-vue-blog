@@ -48,6 +48,21 @@ function getPublishedPostBySlug(db: WrappedDatabase, slug: string): SqlRow | nul
     .get(slug, 'published') as SqlRow | null;
 }
 
+/** 站点设置「作者昵称」，用于已登录博主回复留言时展示身份 */
+function getSiteAuthorDisplayName(db: WrappedDatabase): string {
+  const nameRow = db.prepare(`SELECT value FROM site_settings WHERE key = 'author_name'`).get() as
+    | { value: string }
+    | undefined;
+  const raw = String(nameRow?.value ?? '').trim();
+  if (raw) return raw.slice(0, 64);
+  const titleRow = db.prepare(`SELECT value FROM site_settings WHERE key = 'site_title'`).get() as
+    | { value: string }
+    | undefined;
+  const t = String(titleRow?.value ?? '').trim();
+  if (t) return t.slice(0, 64);
+  return '博主';
+}
+
 /** GET /posts/:slug/comments */
 registerJsonRoute(router, 'get', '/posts/:slug/comments', async (ctx) => {
   const slug = paramSlug(ctx.req);
@@ -63,9 +78,12 @@ registerJsonRoute(router, 'get', '/posts/:slug/comments', async (ctx) => {
 
   const rows = db
     .prepare(
-      `SELECT id, author_name, body, created_at FROM comments
-       WHERE post_id = ? AND status = 'approved'
-       ORDER BY datetime(created_at) ASC
+      `SELECT c.id, c.author_name, c.body, c.created_at, c.parent_id,
+          par.author_name AS parent_author_name
+       FROM comments c
+       LEFT JOIN comments par ON par.id = c.parent_id
+       WHERE c.post_id = ? AND c.status = 'approved'
+       ORDER BY datetime(c.created_at) ASC
        LIMIT ? OFFSET ?`
     )
     .all(post.id, limit, offset);
@@ -78,6 +96,8 @@ registerJsonRoute(router, 'get', '/posts/:slug/comments', async (ctx) => {
         authorName: row.author_name,
         body: row.body,
         createdAt: row.created_at,
+        parentId: row.parent_id != null ? row.parent_id : null,
+        parentAuthorName: row.parent_author_name != null ? String(row.parent_author_name) : null,
       };
     }),
     page,
@@ -98,9 +118,40 @@ registerJsonRoute(
     if (!post) throw new HttpError(404, '文章不存在');
 
     const bodyObj = ctx.body;
-    const authorName = typeof bodyObj.authorName === 'string' ? bodyObj.authorName.trim() : '';
+    let authorName = typeof bodyObj.authorName === 'string' ? bodyObj.authorName.trim() : '';
     let authorEmail = typeof bodyObj.authorEmail === 'string' ? bodyObj.authorEmail.trim() : '';
     const rawBody = typeof bodyObj.body === 'string' ? bodyObj.body : '';
+
+    const body = sanitizeHtml(rawBody, {
+      allowedTags: [],
+      allowedAttributes: {},
+    }).trim();
+    if (!body || body.length > 2000) {
+      throw new HttpError(400, '留言内容为 1～2000 个字符');
+    }
+
+    let parentId: number | null = null;
+    const rawParent = (bodyObj as Record<string, unknown>).parentId;
+    if (rawParent != null && rawParent !== '') {
+      const n = parseInt(String(rawParent), 10);
+      if (!Number.isFinite(n) || n < 1) {
+        throw new HttpError(400, '无效的回复对象');
+      }
+      const parentRow = db
+        .prepare(
+          `SELECT id FROM comments WHERE id = ? AND post_id = ? AND status = 'approved'`
+        )
+        .get(n, post.id) as { id: number } | undefined;
+      if (!parentRow) {
+        throw new HttpError(400, '回复的留言不存在或不可用');
+      }
+      parentId = n;
+    }
+
+    const isAdminSession = !!(ctx.req.session && typeof ctx.req.session.userId === 'number');
+    if (isAdminSession && parentId != null && !authorName) {
+      authorName = getSiteAuthorDisplayName(db);
+    }
 
     if (!authorName || authorName.length > 64) {
       throw new HttpError(400, '昵称为 1～64 个字符');
@@ -113,25 +164,17 @@ registerJsonRoute(
       authorEmail = '';
     }
 
-    const body = sanitizeHtml(rawBody, {
-      allowedTags: [],
-      allowedAttributes: {},
-    }).trim();
-    if (!body || body.length > 2000) {
-      throw new HttpError(400, '留言内容为 1～2000 个字符');
-    }
-
     const info = db
       .prepare(
-        `INSERT INTO comments (post_id, author_name, author_email, body, status)
-         VALUES (?, ?, ?, ?, 'pending')`
+        `INSERT INTO comments (post_id, author_name, author_email, body, status, parent_id)
+         VALUES (?, ?, ?, ?, 'approved', ?)`
       )
-      .run(post.id, authorName, authorEmail || null, body);
+      .run(post.id, authorName, authorEmail || null, body, parentId);
 
     return payload(
       {
         id: info.lastInsertRowid,
-        message: '提交成功，审核通过后将显示',
+        message: '留言成功',
       },
       'created',
       201

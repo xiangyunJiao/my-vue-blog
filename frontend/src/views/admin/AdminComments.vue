@@ -7,7 +7,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
 
-const statusFilter = ref('pending')
+const statusFilter = ref('all')
 const rows = ref([])
 const loading = ref(false)
 
@@ -59,7 +59,7 @@ function openPost(slug) {
 <template>
   <div class="admin-comments">
     <h1>留言管理</h1>
-    <p class="hint">读者提交的留言默认为「待审核」，通过后才会在文章页展示。</p>
+    <p class="hint">留言默认在文章页公开显示；可在下方筛选状态，或删除不当内容。</p>
 
     <el-radio-group v-model="statusFilter" class="filter">
       <el-radio-button value="pending">待审核</el-radio-button>
@@ -115,5 +115,9 @@ function openPost(slug) {
 }
 .filter {
   margin-bottom: 8px;
+}
+
+.subtle {
+  color: var(--el-text-color-placeholder);
 }
 </style>
