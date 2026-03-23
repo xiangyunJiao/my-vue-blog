@@ -8,6 +8,7 @@ import { getVisitorIdFromReq } from '../lib/visitor';
 import { getHintForPostOnly } from '../lib/getMethodHint';
 import { resError } from '../lib/httpJson';
 import { payload, registerJsonRoute } from '../lib/apiRoute';
+import { DEFAULT_SITE_NAME } from '../config/site';
 
 const router = Router();
 
@@ -55,6 +56,8 @@ function getSiteAuthorDisplayName(db: WrappedDatabase): string {
     | undefined;
   const raw = String(nameRow?.value ?? '').trim();
   if (raw) return raw.slice(0, 64);
+  const fromConfig = DEFAULT_SITE_NAME.trim();
+  if (fromConfig) return fromConfig.slice(0, 64);
   const titleRow = db.prepare(`SELECT value FROM site_settings WHERE key = 'site_title'`).get() as
     | { value: string }
     | undefined;

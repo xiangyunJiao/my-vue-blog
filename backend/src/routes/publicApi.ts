@@ -5,7 +5,7 @@ import { HttpError } from '../lib/errors';
 import { markdownToSafeHtml } from '../lib/markdown';
 import { getVisitorIdFromReq } from '../lib/visitor';
 import { getHintForPostOnly } from '../lib/getMethodHint';
-import { DEFAULT_SITE_NAME } from '../config/site';
+import { DEFAULT_SITE_NAME, resolveSiteTitle } from '../config/site';
 import { readVisitStats } from '../lib/visitStats';
 import { registerJsonRoute } from '../lib/apiRoute';
 
@@ -279,6 +279,7 @@ registerJsonRoute(router, 'get', '/site', async () => {
       const row = r as SqlRow;
       settings[String(row.key)] = row.value;
     }
+    settings.site_title = resolveSiteTitle(settings.site_title);
     return settings;
   } catch {
     return {

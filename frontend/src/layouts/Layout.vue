@@ -64,7 +64,7 @@ onMounted(async () => {
       tags.list(),
       links.list(),
     ])
-    siteTitle.value = siteRes.site_title || SITE_NAME
+    siteTitle.value = SITE_NAME || siteRes.site_title
     if (siteTitle.value) {
       document.title = siteTitle.value
     }

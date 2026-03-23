@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS links (
 );
 
 -- 首次空库种子（与 config/site.ts 默认名可不一致；上线后多在后台改站点标题）
-INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_title', '小云的随笔集');
+INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_title', '爱编程的小云');
 INSERT OR IGNORE INTO site_settings (key, value) VALUES ('site_description', '');
 INSERT OR IGNORE INTO site_settings (key, value) VALUES ('about_content', '');
 INSERT OR IGNORE INTO site_settings (key, value) VALUES ('author_name', '');

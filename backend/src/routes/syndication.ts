@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { DEFAULT_SITE_NAME } from '../config/site';
+import { resolveSiteTitle } from '../config/site';
 import { getDb } from '../db';
 import { asyncHandler } from '../middleware/asyncHandler';
 import type { SqlRow } from '../db/types';
@@ -19,18 +19,19 @@ function escapeXml(s: unknown): string {
 const sendFeedXml = asyncHandler(async (_req, res) => {
   const db = await getDb();
   const baseUrl = (process.env.PUBLIC_SITE_URL || 'http://localhost:5173').replace(/\/$/, '');
-  let siteTitle = DEFAULT_SITE_NAME;
+  let dbSiteTitle: string | undefined;
   let siteDesc = '';
   try {
     const rows = db.prepare('SELECT key, value FROM site_settings').all();
     for (const r of rows) {
       const row = r as SqlRow;
-      if (row.key === 'site_title') siteTitle = String(row.value || siteTitle);
+      if (row.key === 'site_title') dbSiteTitle = String(row.value ?? '');
       if (row.key === 'site_description') siteDesc = String(row.value || '');
     }
   } catch {
     // use defaults
   }
+  const siteTitle = resolveSiteTitle(dbSiteTitle);
   const posts = db
     .prepare(
       `SELECT title, slug, excerpt, published_at, created_at FROM posts

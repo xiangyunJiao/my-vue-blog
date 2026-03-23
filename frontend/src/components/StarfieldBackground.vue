@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 
 /**
  * 星空背景（原理：几乎纯 CSS）
@@ -37,30 +37,66 @@ const starLayers = computed(() => {
   return [...mk(11, 52, 0.7, 1), ...mk(29, 30, 0.5, 1.5), ...mk(47, 12, 0.95, 2.5)].join(',');
 });
 
-/** 统一方向：左上 → 右下；条数略减；横向铺满约 2%～98%，竖向起点拉开以覆盖全屏轨迹 */
-const METEOR_COUNT = 32;
+/**
+ * 左上 → 右下同一族平行线；约 1/3 条刻意偏左（锚点 1%～32%），让轨迹掠过左下区域；
+ * 略调 --meteor-angle 打散平行束，避免左下角被「束外」空出来。
+ * 窄屏（手机）同屏面积小、同条数会显得「更稀」，故单独加条数。
+ */
+const METEOR_COUNT_DESKTOP = 32;
+const METEOR_COUNT_NARROW = 54;
 
-const meteors = computed(() =>
-  Array.from({ length: METEOR_COUNT }, (_, i) => {
-    const left = ((i * 47 + 19) % 960) / 10 + 2;
-    const top = -12 - (i % 11) * 2.2;
+const ANGLES = ['-44deg', '-42deg', '-40deg', '-39deg'];
+
+const isNarrowViewport = ref(
+  typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+);
+
+function updateNarrowViewport() {
+  if (typeof window === 'undefined') return;
+  isNarrowViewport.value = window.matchMedia('(max-width: 768px)').matches;
+}
+
+let narrowMql: MediaQueryList | undefined;
+
+onMounted(() => {
+  updateNarrowViewport();
+  if (typeof window === 'undefined') return;
+  narrowMql = window.matchMedia('(max-width: 768px)');
+  narrowMql.addEventListener('change', updateNarrowViewport);
+});
+
+onUnmounted(() => {
+  narrowMql?.removeEventListener('change', updateNarrowViewport);
+});
+
+const meteors = computed(() => {
+  const n = isNarrowViewport.value ? METEOR_COUNT_NARROW : METEOR_COUNT_DESKTOP;
+  return Array.from({ length: n }, (_, i) => {
+    const leftBias = i % 3 === 0;
+    const left = leftBias
+      ? 1 + ((i * 79) % 310) / 10
+      : 24 + ((i * 47 + 19) % 730) / 10;
+    /* 起点略向下铺开，配合更长下落轨迹，让中下屏也有流星穿过 */
+    const top = leftBias ? -36 - (i % 9) * 3 : -6 - (i % 11) * 2.9;
     const delay = ((i * 0.41) % 13) + (i % 4) * 0.12;
     const duration = 2.6 + (i % 12) * 0.48;
     const far = i % 4 === 0;
     const height = far ? 110 + (i % 6) * 12 : 168 + (i % 9) * 14;
     const opacity = far ? 0.42 + (i % 3) * 0.05 : 0.62 + (i % 5) * 0.05;
+    const angle = ANGLES[i % ANGLES.length];
     return {
       id: i,
-      left: `${left}%`,
+      left: `${Math.min(98, Math.max(0.5, left)).toFixed(2)}%`,
       top: `${top}vh`,
       delay: `${delay}s`,
       duration: `${duration}s`,
       height: `${height}px`,
       opacity: String(opacity),
+      angle,
       far,
     };
-  })
-);
+  });
+});
 </script>
 
 <template>
@@ -82,6 +118,7 @@ const meteors = computed(() =>
           animationDuration: m.duration,
           height: m.height,
           '--meteor-opacity': m.opacity,
+          '--meteor-angle': m.angle,
         }"
       />
     </div>
@@ -210,11 +247,27 @@ const meteors = computed(() =>
   }
 }
 
+/* 底部多留负边，避免长轨迹在页面下缘被裁切 */
 .meteor-layer {
   position: absolute;
-  inset: 0;
+  top: -24vh;
+  right: -10vw;
+  bottom: -62vh;
+  left: -10vw;
   mix-blend-mode: normal;
   opacity: 0.88;
+  transform: translateZ(0);
+  contain: layout style;
+}
+
+@media (max-width: 768px) {
+  .meteor-layer {
+    opacity: 0.94;
+    top: -28vh;
+    right: -12vw;
+    bottom: -72vh;
+    left: -12vw;
+  }
 }
 
 /*
@@ -269,7 +322,7 @@ const meteors = computed(() =>
 
 @keyframes meteor-diagonal {
   0% {
-    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(-42vh);
+    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(-52vh);
     opacity: 0;
   }
   5% {
@@ -279,9 +332,29 @@ const meteors = computed(() =>
     opacity: 0.72;
   }
   100% {
-    /* 总位移约 180vh，适配长屏；配合 meteor-layer 负 inset 覆盖整页 */
-    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(138vh);
+    /* 总位移约 226vh，整体更偏向下半屏与视口下方 */
+    transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(174vh);
     opacity: 0;
+  }
+}
+
+/* 手机竖屏：可视高度受地址栏影响，略拉长轨迹，减少「划一下就没了」的感觉 */
+@media (max-width: 768px) {
+  @keyframes meteor-diagonal {
+    0% {
+      transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(-58vh);
+      opacity: 0;
+    }
+    5% {
+      opacity: var(--meteor-opacity);
+    }
+    88% {
+      opacity: 0.72;
+    }
+    100% {
+      transform: translateX(-50%) rotate(var(--meteor-angle)) translateY(192vh);
+      opacity: 0;
+    }
   }
 }
 

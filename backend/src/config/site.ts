@@ -18,8 +18,17 @@ function readSiteNameFromRepoConfig(): string | null {
 }
 
 /**
- * 站点默认名称：数据库无 `site_title` 或读库异常时的回退。
- * 优先级：SITE_NAME → config/site.ts → 兜底（仅文件缺失/解析失败）。
+ * 站点默认名称（对外展示时优先于数据库中的 `site_title`）。
+ * 优先级：SITE_NAME 环境变量 → config/site.ts → 兜底字面量。
  */
 export const DEFAULT_SITE_NAME =
-  (process.env.SITE_NAME || '').trim() || readSiteNameFromRepoConfig() || '小云的随笔集';
+  (process.env.SITE_NAME || '').trim() || readSiteNameFromRepoConfig() || '爱编程的小云';
+
+/**
+ * 对外展示的站点标题：`DEFAULT_SITE_NAME` 优先，库内 `site_title` 仅在其为空时作为回退。
+ */
+export function resolveSiteTitle(dbStoredTitle: unknown): string {
+  const primary = DEFAULT_SITE_NAME.trim();
+  if (primary) return primary;
+  return String(dbStoredTitle ?? '').trim();
+}
